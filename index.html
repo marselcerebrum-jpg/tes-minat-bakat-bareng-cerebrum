@@ -1,0 +1,111 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Tes Minat &amp; Bakat Bareng Cerebrum</title>
+  <meta name="description" content="Kenali minatmu lewat tes RIASEC dan temukan program studi PTN yang cocok, lengkap dengan data resmi daya tampung dan peminat SNPMB.">
+  <meta name="theme-color" content="#8A1C1C">
+  <link rel="icon" type="image/png" href="assets/favicon.png">
+  <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <a class="brand" href="./" aria-label="Tes Minat &amp; Bakat Bareng Cerebrum, kembali ke awal">
+      <span class="logo-pill"><img src="assets/logo-cerebrum.png" alt="Cerebrum" width="153" height="25"></span>
+    </a>
+    <ol class="steps" id="steps">
+      <li>1. Profil</li>
+      <li>2. Tes minat</li>
+      <li>3. Hasil</li>
+    </ol>
+  </header>
+
+  <main>
+    <!-- PROFIL -->
+    <section id="v-profil" class="grid">
+      <div class="hero">
+        <p class="kicker">Tes Minat &amp; Bakat Bareng Cerebrum</p>
+        <h1>Bingung pilih jurusan? Mulai dari yang kamu suka.</h1>
+        <p class="lead">Jawab 18 pernyataan singkat tentang kegiatan yang kamu sukai. Kami petakan minatmu, lalu cocokkan dengan program studi di PTN beserta data resmi daya tampung dan peminatnya.</p>
+        <div class="panel">
+          <div class="field">
+            <label class="f" for="nama">Nama panggilan</label>
+            <input type="text" id="nama" placeholder="Contoh: Rani" autocomplete="given-name" maxlength="30">
+          </div>
+          <div class="field">
+            <span class="f" id="lbl-jalur">Rencana jalur masuk</span>
+            <div class="chips" role="group" aria-labelledby="lbl-jalur" data-key="jalur">
+              <button class="chip" type="button" data-v="SNBP" aria-pressed="false">SNBP (rapor)</button>
+              <button class="chip" type="button" data-v="SNBT" aria-pressed="false">SNBT (UTBK)</button>
+              <button class="chip" type="button" data-v="Belum tahu" aria-pressed="false">Belum tahu</button>
+            </div>
+          </div>
+          <button class="btn" id="mulai" disabled>Mulai tes minat</button>
+          <p class="hint">Butuh sekitar 5 menit. Tidak ada jawaban benar atau salah.</p>
+        </div>
+      </div>
+      <div class="hexbox" id="hex-intro" aria-hidden="true"></div>
+    </section>
+
+    <!-- TES -->
+    <section id="v-tes" class="grid hidden">
+      <div>
+        <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+        <div class="qcount" id="qcount"></div>
+        <p class="qtext" id="qtext" aria-live="polite"></p>
+        <p class="qsub">Seberapa suka kamu melakukan kegiatan ini?</p>
+        <div class="scale" id="scale"></div>
+        <div class="nav">
+          <button class="btn ghost" id="back">Sebelumnya</button>
+          <button class="btn hidden" id="lihat">Lihat hasil</button>
+        </div>
+      </div>
+      <div class="hexbox">
+        <div id="hex-live" class="hex-live"></div>
+        <p class="hint center">Peta minatmu terbentuk seiring kamu menjawab.</p>
+      </div>
+    </section>
+
+    <!-- HASIL -->
+    <section id="v-hasil" class="hidden">
+      <div class="grid">
+        <div>
+          <h1 id="res-title" class="res-title"></h1>
+          <p class="muted">Kode minatmu (Holland Code):</p>
+          <div class="code" id="res-code"></div>
+          <div class="types" id="res-types"></div>
+        </div>
+        <div class="hexbox" id="hex-result"></div>
+      </div>
+
+      <h2 class="section-title">Program studi yang cocok untukmu</h2>
+      <p class="muted narrow">Diurutkan berdasarkan kecocokan dengan kode minatmu. Buka setiap rumpun untuk melihat PTN yang paling diminati dan PTN dengan peluang lebih besar.</p>
+      <div class="note" id="jalur-note"></div>
+      <div class="filters" id="filters" role="group" aria-label="Filter rumpun"></div>
+      <div class="recs" id="recs"></div>
+
+      <div class="nav start">
+        <button class="btn ghost" id="ulang">Ulangi tes</button>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <p><strong>Sumber data:</strong> <span id="src"></span></p>
+    <p>Keketatan dihitung dari peminat dan daya tampung tahun yang sama (2025). Selalu cek data terbaru dan syarat prodi di <a href="https://snpmb.id" target="_blank" rel="noopener">snpmb.id</a> dan laman PTN tujuan.</p>
+    <p>Hasil tes ini adalah alat bantu eksplorasi, bukan keputusan akhir. Diskusikan pilihanmu dengan guru BK dan orang tua. Model minat mengacu pada teori RIASEC dari John L. Holland.</p>
+    <p class="copy">© <span id="yr"></span> Cerebrum</p>
+  </footer>
+</div>
+
+<script src="js/riasec.js"></script>
+<script src="js/data-snbp.js"></script>
+<script src="js/app.js"></script>
+</body>
+</html>
