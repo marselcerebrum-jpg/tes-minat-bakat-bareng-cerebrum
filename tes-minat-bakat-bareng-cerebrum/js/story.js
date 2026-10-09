@@ -49,28 +49,38 @@
   const INK = "#1A1011";
   let C = TEMA["krem-maroon"];
 
-  const POP = '"Bangers", "Montserrat", Impact, system-ui, sans-serif';
-  const HEAD = '"Montserrat", "Plus Jakarta Sans", system-ui, sans-serif';
-  const BODY = '"Plus Jakarta Sans", system-ui, sans-serif';
+  /* Font khusus Story disimpan di dalam web (assets/fonts), bukan dari Google Fonts,
+     supaya hasilnya SELALU sama, termasuk di browser bawaan Instagram atau sinyal lemah. */
+  const POP = '"TMB Bangers", Impact, sans-serif';
+  const HEAD = '"TMB Montserrat", sans-serif';
+  const BODY = '"TMB Jakarta", sans-serif';
+  const FONT_STORY = [
+    ["TMB Bangers", "assets/fonts/bangers-400.woff2", "400"],
+    ["TMB Montserrat", "assets/fonts/montserrat-800.woff2", "800"],
+    ["TMB Jakarta", "assets/fonts/jakarta-600.woff2", "600"],
+    ["TMB Jakarta", "assets/fonts/jakarta-700.woff2", "700"]
+  ];
   const CTA_1 = "Cek minat & bakat kamu sekarang di";
   const CTA_2 = "Cerebrum App di Play Store / App Store";
 
-  /* Font komik dimuat saat dibutuhkan, tanpa perlu mengubah index.html */
+  /* Muat semua font Story dan PASTIKAN siap sebelum menggambar */
+  let janjiFont = null;
+  function muatSatuFont(fam, url, weight, coba) {
+    return new FontFace(fam, `url(${url}) format("woff2")`, { weight: weight, style: "normal", display: "block" })
+      .load()
+      .then((f) => { document.fonts.add(f); return true; })
+      .catch(() => (coba > 0 ? new Promise((r) => setTimeout(r, 800)).then(() => muatSatuFont(fam, url, weight, coba - 1)) : false));
+  }
   function pastikanFontPop() {
-    if (!document.querySelector('link[data-font="bangers"]')) {
-      const l = document.createElement("link");
-      l.rel = "stylesheet";
-      l.href = "https://fonts.googleapis.com/css2?family=Bangers&display=swap";
-      l.dataset.font = "bangers";
-      document.head.appendChild(l);
+    if (!janjiFont) {
+      janjiFont = Promise.all(FONT_STORY.map(([fam, url, w]) => muatSatuFont(fam, url, w, 2)))
+        .then((hasil) => {
+          const siap = hasil.every(Boolean) && FONT_STORY.every(([fam, , w]) => document.fonts.check(`${w} 40px "${fam}"`));
+          if (!siap) janjiFont = null;   /* boleh dicoba lagi nanti */
+          return siap;
+        });
     }
-    const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
-    const muat = Promise.all([
-      document.fonts.load('80px "Bangers"'),
-      document.fonts.load('800 40px "Montserrat"'),
-      document.fonts.load('700 30px "Plus Jakarta Sans"')
-    ]).catch(() => {});
-    return Promise.race([muat, tunggu(2500)]);
+    return janjiFont;
   }
 
   function loadImg(src) {
@@ -167,7 +177,9 @@
   }
 
   async function buatStory(o) {
-    await pastikanFontPop();
+    if (!(await pastikanFontPop())) {
+      throw new Error("FONT_BELUM_SIAP");
+    }
     C = TEMA[o.tema] || TEMA["krem-maroon"];
 
     const cv = document.createElement("canvas");
@@ -196,6 +208,7 @@
     const pw = lw + 60, ph = lh + 36;
     ctx.save(); ctx.translate(W / 2, 275); ctx.rotate(-.04);
     stiker(ctx, () => roundRect(ctx, -pw / 2, -ph / 2, pw, ph, ph / 2), "#FFFFFF", { shadow: 10, lw: 6 });
+    ctx.imageSmoothingEnabled = true; ctx.imageSmoothingQuality = "high";
     if (logo) ctx.drawImage(logo, -lw / 2, -lh / 2, lw, lh);
     ctx.restore();
 
@@ -314,7 +327,7 @@
   }
 
   window.buatStory = buatStory;
-  window.STORY_VERSI = "2026.10.09";
+  window.STORY_VERSI = "2026.10.11";
   window.siapkanFontStory = pastikanFontPop;
   window.STORY_TEMA = Object.keys(TEMA);
 })();

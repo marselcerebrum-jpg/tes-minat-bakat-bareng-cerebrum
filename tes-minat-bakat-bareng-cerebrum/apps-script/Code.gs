@@ -14,10 +14,11 @@
  *   Sekolah : daftar sekolah untuk pilihan "Asal sekolah" (diisi dari export Centil)
  */
 
-var VERSI_BACKEND = '2026.10.09';
+var VERSI_BACKEND = '2026.10.10';
 var SHEET_PESERTA = 'Peserta';
 var SHEET_SYARAT = 'Syarat';
 var SHEET_SEKOLAH = 'Sekolah';
+var SHEET_PENGATURAN = 'Pengaturan';
 var NAMA_FOLDER = 'Bukti Syarat - Tes Minat & Bakat Bareng Cerebrum';
 var TZ = 'Asia/Jakarta';
 var MAX_FILE_BYTES = 5 * 1024 * 1024;
@@ -25,6 +26,16 @@ var MAX_FILE_BYTES = 5 * 1024 * 1024;
 var HEADER_PESERTA = ['Waktu Daftar', 'ID Peserta', 'Nama', 'WhatsApp', 'Asal Sekolah', 'NPSN', 'Persetujuan', 'Bukti Syarat'];
 var HEADER_SYARAT = ['No', 'Syarat', 'Link (opsional)', 'Aktif (Ya/Tidak)'];
 var HEADER_SEKOLAH = ['NPSN', 'Nama Sekolah', 'Kabupaten/Kota', 'Provinsi'];
+var HEADER_PENGATURAN = ['Kunci (jangan diubah)', 'Nilai', 'Keterangan'];
+var ISI_PENGATURAN = [
+  ['grup_umum', '', 'Link grup WhatsApp untuk semua peserta. Dipakai jika grup per rumpun di bawah kosong. Format: https://chat.whatsapp.com/...'],
+  ['grup_saintek', '', 'Link grup WhatsApp untuk peserta yang rekomendasi utamanya rumpun Saintek (opsional)'],
+  ['grup_soshum', '', 'Link grup WhatsApp untuk peserta yang rekomendasi utamanya rumpun Soshum (opsional)'],
+  ['grup_campuran', '', 'Link grup WhatsApp untuk rumpun campuran, misalnya Psikologi, DKV, Pendidikan (opsional)'],
+  ['wa_sales', '', 'Nomor WhatsApp tim sales untuk tombol konsultasi. Lebih dari satu? Pisahkan dengan koma. Peserta dibagi bergiliran secara otomatis.'],
+  ['link_tryout', 'https://app.cerebrum.id', 'Link aplikasi atau web untuk tombol Tryout SNBT'],
+  ['teks_tryout', 'Ikut Tryout SNBT 2027 GRATIS', 'Teks tombol tryout']
+];
 
 /* ---------- Setup (jalankan sekali) ---------- */
 function setup() {
@@ -45,10 +56,19 @@ function setup() {
   var sekolah = getOrCreateSheet_(ss, SHEET_SEKOLAH, HEADER_SEKOLAH);
   sekolah.getRange('A:A').setNumberFormat('@');
 
+  var pengaturan = getOrCreateSheet_(ss, SHEET_PENGATURAN, HEADER_PENGATURAN);
+  var kunciAda = pengaturan.getLastRow() > 1 ? pengaturan.getRange(2, 1, pengaturan.getLastRow() - 1, 1).getValues().map(function (r) { return String(r[0]); }) : [];
+  ISI_PENGATURAN.forEach(function (row) { if (kunciAda.indexOf(row[0]) === -1) pengaturan.appendRow(row); });
+  pengaturan.getRange('B:B').setNumberFormat('@');
+  pengaturan.setColumnWidth(1, 160); pengaturan.setColumnWidth(2, 320); pengaturan.setColumnWidth(3, 520);
+  if (!pengaturan.getProtections(SpreadsheetApp.ProtectionType.RANGE).some(function (p) { return p.getRange().getColumn() === 1 && p.getRange().getNumRows() > 1; })) {
+    pengaturan.getRange(1, 1, Math.max(pengaturan.getLastRow(), 2), 1).protect().setDescription('Kunci pengaturan, jangan diubah').setWarningOnly(true);
+  }
+
   getFolder_();
 
   /* Poka-yoke: baris judul diberi peringatan bila ada yang mencoba mengubahnya */
-  [peserta, syarat, sekolah].forEach(function (sh) {
+  [peserta, syarat, sekolah, pengaturan].forEach(function (sh) {
     var ada = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).some(function (p) { return p.getRange().getRow() === 1; });
     if (!ada) sh.getRange(1, 1, 1, sh.getLastColumn()).protect().setDescription('Judul kolom, jangan diubah').setWarningOnly(true);
   });
@@ -65,6 +85,7 @@ function doGet(e) {
   try {
     if (action === 'syarat') return json_({ ok: true, syarat: getSyarat_() });
     if (action === 'cek') return json_(cek_());
+    if (action === 'pengaturan') return json_({ ok: true, pengaturan: getPengaturan_() });
     if (action === 'sekolah') return json_(cariSekolah_(e.parameter.q || ''));
     return json_({ ok: true, pesan: 'Backend Tes Minat & Bakat Bareng Cerebrum aktif.' });
   } catch (err) {
@@ -91,7 +112,40 @@ function getSyarat_() {
 
 /* Hapus cache otomatis begitu tab Syarat diedit (trigger onEdit sederhana) */
 function onEdit(e) {
-  if (e && e.range && e.range.getSheet().getName() === SHEET_SYARAT) CacheService.getScriptCache().remove('syarat');
+  if (!e || !e.range) return;
+  var n = e.range.getSheet().getName();
+  if (n === SHEET_SYARAT) CacheService.getScriptCache().remove('syarat');
+  if (n === SHEET_PENGATURAN) CacheService.getScriptCache().remove('pengaturan');
+}
+
+/* Pengaturan langkah lanjut (grup, sales, tryout), dengan poka-yoke format */
+function getPengaturan_() {
+  var cache = CacheService.getScriptCache();
+  var c = cache.get('pengaturan');
+  if (c) return JSON.parse(c);
+  var out = { grup: {}, wa_sales: [], link_tryout: '', teks_tryout: '', masalah: [] };
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PENGATURAN);
+  if (sh && sh.getLastRow() > 1) {
+    sh.getRange(2, 1, sh.getLastRow() - 1, 2).getDisplayValues().forEach(function (r) {
+      var k = String(r[0]).trim(), v = String(r[1]).trim();
+      if (!v) return;
+      if (/^grup_/.test(k)) {
+        if (/^(https?:\/\/)?chat\.whatsapp\.com\/[A-Za-z0-9]+/.test(v)) out.grup[k.slice(5)] = /^https?:/.test(v) ? v : 'https://' + v;
+        else out.masalah.push(k + ': bukan link grup WhatsApp');
+      } else if (k === 'wa_sales') {
+        v.split(/[,;\n]+/).forEach(function (n) {
+          var w = normalisasiWA_(n);
+          if (w) out.wa_sales.push(w); else if (n.trim()) out.masalah.push('wa_sales: nomor tidak valid (' + n.trim() + ')');
+        });
+      } else if (k === 'link_tryout') {
+        out.link_tryout = /^https?:\/\//.test(v) ? v : 'https://' + v;
+      } else if (k === 'teks_tryout') {
+        out.teks_tryout = v.slice(0, 60);
+      }
+    });
+  }
+  cache.put('pengaturan', JSON.stringify(out), 60);
+  return out;
 }
 
 function cek_() {
@@ -99,7 +153,7 @@ function cek_() {
   var hitung = function (n) { var sh = ss.getSheetByName(n); return sh ? Math.max(0, sh.getLastRow() - 1) : -1; };
   var folderOk = false;
   try { folderOk = !!getFolder_(); } catch (e) {}
-  return { ok: true, versi: VERSI_BACKEND, syarat: getSyarat_().length, sekolah: hitung(SHEET_SEKOLAH), peserta: hitung(SHEET_PESERTA), folder: folderOk };
+  return { ok: true, versi: VERSI_BACKEND, syarat: getSyarat_().length, sekolah: hitung(SHEET_SEKOLAH), peserta: hitung(SHEET_PESERTA), folder: folderOk, pengaturan: getPengaturan_() };
 }
 
 function cariSekolah_(q) {

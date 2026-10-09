@@ -64,6 +64,18 @@ Selama `APPS_SCRIPT_URL` masih kosong, web berjalan dalam **mode demo** (ada lab
 - **Melihat peserta:** tab **Peserta**. Kolom "Bukti Syarat" berisi link file di Google Drive (hanya bisa dibuka akun pemilik dan yang diberi akses).
 - **Daftar sekolah:** isi tab **Sekolah** (kolom NPSN, Nama Sekolah, Kabupaten/Kota, Provinsi) dari export Centil. Selama tab ini kosong, kolom asal sekolah menjadi isian bebas.
 
+## Langkah selanjutnya (grup, tryout, konsultasi sales)
+
+Di halaman hasil, peserta melihat 3 tombol:
+
+| Tombol | Mengarah ke | Diatur di |
+|---|---|---|
+| Gabung grup WhatsApp | Grup sesuai rumpun prodi teratas peserta (Saintek/Soshum/Campuran), atau grup umum | tab **Pengaturan**: `grup_umum`, `grup_saintek`, `grup_soshum`, `grup_campuran` |
+| Ikut Tryout SNBT | Aplikasi/web tryout | tab **Pengaturan**: `link_tryout`, `teks_tryout` |
+| Chat Kakak Mentor | WhatsApp tim sales, dengan pesan otomatis berisi nama, sekolah, hasil tes, 3 prodi teratas, jalur, dan ID peserta | tab **Pengaturan**: `wa_sales` (boleh lebih dari satu nomor, pisahkan dengan koma; peserta dibagi bergiliran dan tetap ke sales yang sama) |
+
+Isi kolom **Nilai** saja; kolom **Kunci** jangan diubah. Tombol yang nilainya kosong otomatis disembunyikan. Perubahan berlaku dalam beberapa detik tanpa perlu menyentuh GitHub. Isian yang salah format (misalnya link bukan grup WhatsApp, atau nomor tidak valid) ditandai di halaman `?cek=1`.
+
 ## Poka-yoke (pencegah kesalahan)
 
 **Sisi peserta**
@@ -75,6 +87,7 @@ Selama `APPS_SCRIPT_URL` masih kosong, web berjalan dalam **mode demo** (ada lab
 - Nama wajib berisi huruf, nomor WA divalidasi dan dirapikan ke format 62xxx.
 - Data dikirim di latar dengan coba ulang otomatis, dan dikirim ulang begitu HP kembali online. Kalau tetap gagal, ada tombol "Coba kirim lagi" di halaman hasil.
 - Saat dibuka dari browser bawaan Instagram/TikTok, peserta diberi petunjuk cara menyimpan gambar Story.
+- Font gambar Story disimpan di `assets/fonts` (bukan dari Google Fonts) dan gambar baru dibuat setelah font dipastikan siap. Hasilnya selalu identik di semua HP, browser bawaan Instagram, maupun sinyal lemah.
 
 **Sisi admin dan pengelolaan**
 - Kalau ada file yang hilang atau rusak, peserta melihat pesan "Sedang ada gangguan" beserta kode untuk admin, bukan layar kosong.

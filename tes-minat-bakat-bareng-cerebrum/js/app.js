@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSI = "2026.10.09";
+  const VERSI = "2026.10.11";
   const $ = (id) => document.getElementById(id);
 
   /* ===== POKA-YOKE 1: file wajib harus terbaca, kalau tidak tampilkan pesan jelas ===== */
@@ -138,7 +138,7 @@
     });
   }
 
-  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_TERDAFTAR = "tmb-terdaftar-v1";
+  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_TERDAFTAR = "tmb-terdaftar-v1", KUNCI_PENGATURAN = "tmb-pengaturan-v1";
 
   /* ---------- State ---------- */
   const state = {
@@ -489,6 +489,8 @@
       ? `Data daya tampung dan peminat di bawah ini adalah data resmi <strong>jalur SNBP</strong> dari SNPMB, diperbarui ${D.meta.diperbarui}.`
       : `Rekomendasi jurusan berlaku untuk semua jalur. Data daya tampung dan peminat yang tersedia saat ini adalah <strong>jalur SNBP</strong>; data SNBT sedang kami siapkan. Untuk SNBT, cek daya tampungnya di <a href="https://snpmb.id" target="_blank" rel="noopener">snpmb.id</a>.`;
 
+    renderLangkah(sc);
+
     $("filters").innerHTML = [["semua", "Semua"], ["saintek", "Saintek"], ["soshum", "Soshum"], ["campuran", "Bisa dari semua jurusan"]]
       .map(([v, l]) => `<button class="chip" type="button" data-f="${v}" aria-pressed="${state.filter === v}">${l}</button>`).join("");
     renderRecs(sc);
@@ -547,11 +549,87 @@
     show("tes"); renderQ();
   });
 
+  /* ========== 4b. LANGKAH SELANJUTNYA (grup, tryout, konsultasi sales) ========== */
+  let pengaturan = bacaJSON(KUNCI_PENGATURAN) || null;
+  const PENGATURAN_DEMO = { grup: { umum: "#demo" }, wa_sales: ["#demo"], link_tryout: "https://app.cerebrum.id", teks_tryout: "Ikut Tryout SNBT 2027 GRATIS" };
+  async function muatPengaturan() {
+    if (DEMO) { pengaturan = PENGATURAN_DEMO; return; }
+    try {
+      const r = await apiGet({ action: "pengaturan" });
+      if (r && r.ok && r.pengaturan) {
+        pengaturan = r.pengaturan; tulisJSON(KUNCI_PENGATURAN, pengaturan);
+        if (state.hasil && !$("v-hasil").classList.contains("hidden")) renderLangkah(state.hasil.sc);
+      }
+    } catch (e) { /* pakai cache terakhir */ }
+  }
+  function hashAngka(s) { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
+
+  (function gayaLangkah() {
+    const st = document.createElement("style");
+    st.textContent = `
+      .langkah{margin:44px 0 0}
+      .langkah h2{font-size:clamp(1.4rem,3.2vw,1.9rem);font-weight:800;margin:0 0 6px}
+      .langkah-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
+      @media (max-width:820px){.langkah-grid{grid-template-columns:1fr}}
+      .langkah-card{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+      .langkah-card.utama{border:2px solid var(--brand);background:var(--brand-soft)}
+      .langkah-card .ikon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:1.3rem}
+      .langkah-card h3{font-size:1.1rem;margin:0}
+      .langkah-card p{margin:0;color:var(--muted);font-size:.92rem;flex:1}
+      .langkah-card .btn{width:100%;text-decoration:none;text-align:center}`;
+    document.head.appendChild(st);
+  })();
+
+  function renderLangkah(sc) {
+    let box = $("langkah");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "langkah"; box.className = "langkah";
+      const judulProdi = $("v-hasil").querySelector(".section-title");
+      $("v-hasil").insertBefore(box, judulProdi);
+    }
+    const p = pengaturan || {};
+    const grup = p.grup || {};
+    const atas = ranking(sc, "semua").slice(0, 3);
+    const kelompok = atas[0] ? atas[0].kelompok : "campuran";
+    const linkGrup = grup[kelompok] || grup.umum || grup.saintek || grup.soshum || grup.campuran || "";
+    const labelKelompok = { saintek: "Saintek", soshum: "Soshum", campuran: "" }[kelompok] || "";
+    const sales = Array.isArray(p.wa_sales) ? p.wa_sales : [];
+    const nomorSales = sales.length ? sales[hashAngka(state.wa || state.nama) % sales.length] : "";
+    const tipe = R.types[state.hasil.code[0]];
+    const pesan = `Halo Kak, aku ${state.nama || "peserta"}${state.sekolah ? " dari " + state.sekolah : ""}. ` +
+      `Hasil tes minatku ${tipe.id} (${state.hasil.code.join("")}), prodi yang paling cocok: ${atas.map((r) => r.label).join(", ")}. ` +
+      `Rencana jalur: ${state.jalur || "-"}. Aku mau konsultasi persiapan masuk PTN dong 🙏` + (state.pesertaId ? ` (ID: ${state.pesertaId})` : "");
+    const linkWA = nomorSales ? (nomorSales === "#demo" ? "#demo" : `https://wa.me/${nomorSales}?text=${encodeURIComponent(pesan)}`) : "";
+
+    const kartu = [];
+    if (linkGrup) kartu.push({ utama: true, ikon: "👥", judul: `Gabung Grup Pejuang PTN${labelKelompok ? " " + labelKelompok : ""}`,
+      isi: "Dapat info jurusan, jadwal SNBP/SNBT, live class, dan latihan soal gratis bareng teman seperjuangan.", tombol: "Gabung grup WhatsApp", href: linkGrup });
+    if (p.link_tryout) kartu.push({ ikon: "📝", judul: "Ukur peluangmu",
+      isi: `Kamu sudah tahu jurusannya. Sekarang cek, nilaimu sudah cukup untuk ${atas[0] ? atas[0].label : "jurusan impianmu"} belum?`, tombol: p.teks_tryout || "Ikut Tryout SNBT GRATIS", href: p.link_tryout });
+    if (linkWA) kartu.push({ ikon: "💬", judul: "Konsultasi gratis",
+      isi: "Bingung strategi pilih jurusan dan kampus? Ngobrol langsung dengan Kakak Mentor Cerebrum.", tombol: "Chat Kakak Mentor", href: linkWA });
+
+    if (!kartu.length) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    box.innerHTML = `<h2>Langkah selanjutnya 🚀</h2><p class="muted narrow">Hasil tes baru langkah pertama. Ini yang bisa kamu lakukan sekarang.</p>
+      <div class="langkah-grid">${kartu.map((k) => `<div class="langkah-card${k.utama ? " utama" : ""}">
+        <span class="ikon" aria-hidden="true">${k.ikon}</span><h3>${esc(k.judul)}</h3><p>${esc(k.isi)}</p>
+        <a class="btn${k.utama ? "" : " ghost"}" href="${esc(k.href)}" target="_blank" rel="noopener">${esc(k.tombol)}</a></div>`).join("")}</div>`;
+  }
+  /* Di mode demo, tombol tidak membuka WhatsApp sungguhan */
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href="#demo"]');
+    if (a) { e.preventDefault(); toast("Mode demo: link akan aktif setelah diisi di tab Pengaturan spreadsheet."); }
+  });
+
   /* ========== 5. INSTAGRAM STORY ========== */
   let storyFile = null, storyUrl = "";
   $("btn-story").addEventListener("click", async () => {
     const btn = $("btn-story");
     btn.disabled = true;
+    const teksAsli = btn.innerHTML;
+    btn.lastChild.textContent = " Menyiapkan gambar…";
     try {
       const { sc, code } = state.hasil;
       const site = (CFG.SITE_URL || location.host || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
@@ -576,8 +654,10 @@
       openModal("m-story");
     } catch (err) {
       console.error(err);
-      toast("Gambar gagal dibuat. Coba lagi, atau buka di browser Chrome/Safari.");
-    } finally { btn.disabled = false; }
+      toast(err && err.message === "FONT_BELUM_SIAP"
+        ? "Tampilan gambar belum siap karena koneksi lambat. Tunggu sebentar lalu ketuk lagi."
+        : "Gambar gagal dibuat. Coba lagi, atau buka di browser Chrome/Safari.");
+    } finally { btn.disabled = false; btn.innerHTML = teksAsli; }
   });
   $("story-share").addEventListener("click", async () => {
     try {
@@ -623,6 +703,15 @@
           tambah(true, "Tab Sekolah", r.sekolah > 0 ? r.sekolah + " sekolah (pencarian aktif)" : "Masih kosong (asal sekolah diisi bebas)");
           tambah(true, "Peserta terdaftar", r.peserta + " baris di tab Peserta");
           tambah(!!r.folder, "Folder bukti di Drive", r.folder ? "OK" : "Tidak ditemukan. Jalankan fungsi setup lagi.");
+          const pg = r.pengaturan;
+          if (!pg) tambah(false, "Tab Pengaturan", "Belum ada. Tempel Code.gs terbaru, jalankan setup, lalu deploy versi baru.");
+          else {
+            const g = Object.keys(pg.grup || {});
+            tambah(g.length > 0, "Link grup WhatsApp", g.length ? "Terisi: " + g.join(", ") : "Belum diisi. Tombol gabung grup tidak muncul.");
+            tambah((pg.wa_sales || []).length > 0, "Nomor WA tim sales", (pg.wa_sales || []).length ? pg.wa_sales.length + " nomor (dibagi bergiliran)" : "Belum diisi. Tombol konsultasi tidak muncul.");
+            tambah(!!pg.link_tryout, "Link tryout", pg.link_tryout || "Belum diisi. Tombol tryout tidak muncul.");
+            if ((pg.masalah || []).length) tambah(false, "Isian Pengaturan yang salah format", pg.masalah.join("; "));
+          }
         } else {
           tambah(false, "Backend Google terhubung", "Terhubung, tapi Code.gs masih versi lama. Deploy versi baru (Manage deployments → Edit → New version).");
         }
@@ -630,6 +719,8 @@
         tambah(false, "Backend Google terhubung", "Tidak bisa dihubungi. Cek URL dan pastikan akses Web app = Anyone.");
       }
     }
+    const fontOk = window.siapkanFontStory ? await window.siapkanFontStory() : false;
+    tambah(fontOk, "Font gambar Story", fontOk ? "Semua font siap (assets/fonts)" : "Gagal dimuat. Pastikan folder assets/fonts ikut diupload.");
     tambah(!!(window.localStorage), "Penyimpanan progres di browser", window.localStorage ? "Tersedia" : "Tidak tersedia");
     const main = document.querySelector("main");
     main.innerHTML = '<section class="panel" style="max-width:720px;margin:0 auto"><h1 style="font-size:1.6rem;margin:0 0 6px">Cek kesehatan sistem</h1>' +
@@ -657,6 +748,7 @@
   });
 
   if (/[?&]cek=1/.test(location.search)) { halamanCek(); return; }
+  muatPengaturan();
 
   /* Lanjutkan tes yang belum selesai (misalnya halaman tertutup atau ter-refresh) */
   const p = bacaJSON(KUNCI_PROGRES);

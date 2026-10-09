@@ -4,7 +4,7 @@
  * tim Cerebrum (bukan data statistik). Data angka (daya tampung, peminat) ada di data-snbp.js.
  */
 window.RIASEC = {
-  versi: "2026.10.09",
+  versi: "2026.10.11",
   order: ["R", "I", "A", "S", "E", "C"],
 
   types: {
