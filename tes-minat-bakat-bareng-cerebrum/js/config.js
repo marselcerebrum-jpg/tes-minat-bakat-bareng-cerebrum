@@ -5,7 +5,7 @@
 window.CONFIG = {
   /* URL Web App Google Apps Script (lihat README, bagian "Setup Google Sheet").
      Selama masih kosong, web berjalan dalam MODE DEMO: data tidak disimpan. */
-  APPS_SCRIPT_URL: "",
+  APPS_SCRIPT_URL: "https://script.google.com/macros/s/AKfycbypB58q-U6RQgUNFpHtvX8LaPpnEL3jARLwSGQXMeZYLJotsU-RKusGyCzJ_ITLu-MmuA/exec",
 
   /* Ditampilkan di template Instagram Story */
   INSTAGRAM: "@cerebrum.id",
