@@ -411,7 +411,8 @@
         nama: state.nama.split(" ")[0], code, scores: sc, order: ORDER, types: R.types,
         top3: ranking(sc, "semua").slice(0, 3).map((r) => ({ label: r.label, m: r.m })),
         url: site || "cerebrum.id", instagram: CFG.INSTAGRAM || "@cerebrum.id",
-        logoSrc: $("logo").src
+        logoSrc: $("logo").src,
+        tema: CFG.STORY_TEMA
       });
       storyFile = new File([blob], "hasil-tes-minat-cerebrum.png", { type: "image/png" });
       if (storyUrl) URL.revokeObjectURL(storyUrl);
