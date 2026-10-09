@@ -10,33 +10,51 @@
   <link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@600;700;800&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
 <div class="wrap">
   <header class="top">
     <a class="brand" href="./" aria-label="Tes Minat &amp; Bakat Bareng Cerebrum, kembali ke awal">
-      <span class="logo-pill"><img src="assets/logo-cerebrum.png" alt="Cerebrum" width="153" height="25"></span>
+      <span class="logo-pill"><img id="logo" src="assets/logo-cerebrum.png" alt="Cerebrum" width="153" height="25"></span>
     </a>
     <ol class="steps" id="steps">
-      <li>1. Profil</li>
+      <li>1. Data diri</li>
       <li>2. Tes minat</li>
       <li>3. Hasil</li>
     </ol>
   </header>
 
+  <div class="demo-bar hidden" id="demo-bar">Mode demo: data belum tersambung ke Google Sheet, jadi isian tidak disimpan.</div>
+
   <main>
-    <!-- PROFIL -->
+    <!-- DATA DIRI -->
     <section id="v-profil" class="grid">
       <div class="hero">
         <p class="kicker">Tes Minat &amp; Bakat Bareng Cerebrum</p>
         <h1>Bingung pilih jurusan? Mulai dari yang kamu suka.</h1>
-        <p class="lead">Jawab 18 pernyataan singkat tentang kegiatan yang kamu sukai. Kami petakan minatmu, lalu cocokkan dengan program studi di PTN beserta data resmi daya tampung dan peminatnya.</p>
-        <div class="panel">
+        <p class="lead">Jawab 39 pernyataan singkat tentang kegiatan dan hal yang kamu minati. Kami petakan minatmu, lalu cocokkan dengan program studi di PTN beserta data resmi daya tampung dan peminatnya.</p>
+
+        <form class="panel" id="form-profil" novalidate>
+          <div class="bukti-status" id="bukti-status">
+            <span id="bukti-text">Bukti syarat belum diunggah</span>
+            <button type="button" class="linkbtn" id="buka-syarat">Unggah bukti</button>
+          </div>
+
           <div class="field">
-            <label class="f" for="nama">Nama panggilan</label>
-            <input type="text" id="nama" placeholder="Contoh: Rani" autocomplete="given-name" maxlength="30">
+            <label class="f" for="nama">Nama lengkap</label>
+            <input type="text" id="nama" autocomplete="name" maxlength="60" required>
+          </div>
+          <div class="field">
+            <label class="f" for="wa">Nomor WhatsApp</label>
+            <input type="tel" id="wa" inputmode="tel" autocomplete="tel" placeholder="08xxxxxxxxxx" maxlength="16" required>
+          </div>
+          <div class="field combo">
+            <label class="f" for="sekolah">Asal sekolah</label>
+            <input type="text" id="sekolah" autocomplete="off" role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="sekolah-list" placeholder="Ketik nama sekolah, misalnya SMAN 3 Bandung" maxlength="120" required>
+            <ul class="suggest hidden" id="sekolah-list" role="listbox"></ul>
+            <p class="hint" id="sekolah-hint"></p>
           </div>
           <div class="field">
             <span class="f" id="lbl-jalur">Rencana jalur masuk</span>
@@ -46,29 +64,29 @@
               <button class="chip" type="button" data-v="Belum tahu" aria-pressed="false">Belum tahu</button>
             </div>
           </div>
-          <button class="btn" id="mulai" disabled>Mulai tes minat</button>
-          <p class="hint">Butuh sekitar 5 menit. Tidak ada jawaban benar atau salah.</p>
-        </div>
+          <label class="consent">
+            <input type="checkbox" id="setuju">
+            <span id="teks-setuju"></span>
+          </label>
+
+          <p class="error hidden" id="form-error" role="alert"></p>
+          <button class="btn" type="submit" id="mulai">Mulai tes minat</button>
+          <p class="hint">Butuh sekitar 8–10 menit. Tidak ada jawaban benar atau salah.</p>
+        </form>
       </div>
       <div class="hexbox" id="hex-intro" aria-hidden="true"></div>
     </section>
 
     <!-- TES -->
-    <section id="v-tes" class="grid hidden">
-      <div>
-        <div class="progress" aria-hidden="true"><span id="bar"></span></div>
-        <div class="qcount" id="qcount"></div>
-        <p class="qtext" id="qtext" aria-live="polite"></p>
-        <p class="qsub">Seberapa suka kamu melakukan kegiatan ini?</p>
-        <div class="scale" id="scale"></div>
-        <div class="nav">
-          <button class="btn ghost" id="back">Sebelumnya</button>
-          <button class="btn hidden" id="lihat">Lihat hasil</button>
-        </div>
-      </div>
-      <div class="hexbox">
-        <div id="hex-live" class="hex-live"></div>
-        <p class="hint center">Peta minatmu terbentuk seiring kamu menjawab.</p>
+    <section id="v-tes" class="test hidden">
+      <div class="progress" aria-hidden="true"><span id="bar"></span></div>
+      <div class="qcount" id="qcount"></div>
+      <p class="qtext" id="qtext" aria-live="polite"></p>
+      <p class="qsub">Seberapa sesuai pernyataan ini dengan dirimu?</p>
+      <div class="scale" id="scale"></div>
+      <div class="nav">
+        <button class="btn ghost" id="back">Sebelumnya</button>
+        <button class="btn hidden" id="lihat">Lihat hasil</button>
       </div>
     </section>
 
@@ -80,6 +98,10 @@
           <p class="muted">Kode minatmu (Holland Code):</p>
           <div class="code" id="res-code"></div>
           <div class="types" id="res-types"></div>
+          <button class="btn share-btn" id="btn-story">
+            <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true"><rect x="3" y="3" width="18" height="18" rx="5" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="12" cy="12" r="4" fill="none" stroke="currentColor" stroke-width="2"/><circle cx="17.3" cy="6.7" r="1.2" fill="currentColor"/></svg>
+            Bagikan ke Instagram Story
+          </button>
         </div>
         <div class="hexbox" id="hex-result"></div>
       </div>
@@ -104,8 +126,36 @@
   </footer>
 </div>
 
+<!-- POP-UP SYARAT -->
+<div class="modal hidden" id="m-syarat" role="dialog" aria-modal="true" aria-labelledby="ms-title">
+  <div class="modal-card">
+    <span class="logo-pill sm"><img src="assets/logo-cerebrum.png" alt="Cerebrum" width="122" height="20"></span>
+    <h2 id="ms-title">Sebelum mulai, penuhi syarat ini dulu ya</h2>
+    <p class="muted">Unggah screenshot sebagai bukti untuk setiap syarat.</p>
+    <ol class="syarat" id="syarat-list"><li class="loading">Memuat syarat…</li></ol>
+    <p class="error hidden" id="syarat-error" role="alert"></p>
+    <button class="btn block" id="syarat-ok" disabled>Lanjut isi data diri</button>
+  </div>
+</div>
+
+<!-- POP-UP STORY -->
+<div class="modal hidden" id="m-story" role="dialog" aria-modal="true" aria-labelledby="mst-title">
+  <div class="modal-card story-card">
+    <button class="close" id="story-close" aria-label="Tutup">×</button>
+    <h2 id="mst-title">Bagikan hasilmu</h2>
+    <p class="muted" id="story-hint">Simpan atau bagikan gambar ini, lalu unggah ke Instagram Story.</p>
+    <div class="story-preview"><img id="story-img" alt="Pratinjau Instagram Story hasil tes minat"></div>
+    <div class="story-actions">
+      <button class="btn" id="story-share">Bagikan</button>
+      <button class="btn ghost" id="story-download">Unduh gambar</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/config.js"></script>
 <script src="js/riasec.js"></script>
 <script src="js/data-snbp.js"></script>
+<script src="js/story.js"></script>
 <script src="js/app.js"></script>
 </body>
 </html>
