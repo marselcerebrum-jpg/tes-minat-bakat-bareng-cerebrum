@@ -14,6 +14,7 @@
  *   Sekolah : daftar sekolah untuk pilihan "Asal sekolah" (diisi dari export Centil)
  */
 
+var VERSI_BACKEND = '2026.10.09';
 var SHEET_PESERTA = 'Peserta';
 var SHEET_SYARAT = 'Syarat';
 var SHEET_SEKOLAH = 'Sekolah';
@@ -46,6 +47,12 @@ function setup() {
 
   getFolder_();
 
+  /* Poka-yoke: baris judul diberi peringatan bila ada yang mencoba mengubahnya */
+  [peserta, syarat, sekolah].forEach(function (sh) {
+    var ada = sh.getProtections(SpreadsheetApp.ProtectionType.RANGE).some(function (p) { return p.getRange().getRow() === 1; });
+    if (!ada) sh.getRange(1, 1, 1, sh.getLastColumn()).protect().setDescription('Judul kolom, jangan diubah').setWarningOnly(true);
+  });
+
   var def = ss.getSheetByName('Sheet1');
   if (def && def.getLastRow() === 0 && ss.getSheets().length > 1) ss.deleteSheet(def);
 
@@ -57,6 +64,7 @@ function doGet(e) {
   var action = (e && e.parameter && e.parameter.action) || '';
   try {
     if (action === 'syarat') return json_({ ok: true, syarat: getSyarat_() });
+    if (action === 'cek') return json_(cek_());
     if (action === 'sekolah') return json_(cariSekolah_(e.parameter.q || ''));
     return json_({ ok: true, pesan: 'Backend Tes Minat & Bakat Bareng Cerebrum aktif.' });
   } catch (err) {
@@ -65,11 +73,33 @@ function doGet(e) {
 }
 
 function getSyarat_() {
+  var cache = CacheService.getScriptCache();
+  var c = cache.get('syarat');
+  if (c) return JSON.parse(c);
   var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_SYARAT);
   if (!sh || sh.getLastRow() < 2) return [];
-  return sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues()
+  var out = sh.getRange(2, 1, sh.getLastRow() - 1, 4).getValues()
     .filter(function (r) { return String(r[1]).trim() && String(r[3]).trim().toLowerCase() !== 'tidak'; })
-    .map(function (r) { return { teks: String(r[1]).trim(), link: String(r[2]).trim() }; });
+    .map(function (r) {
+      var link = String(r[2]).trim();
+      if (link && !/^https?:\/\//i.test(link)) link = 'https://' + link;   /* poka-yoke: link tanpa https */
+      return { teks: String(r[1]).trim(), link: link };
+    });
+  cache.put('syarat', JSON.stringify(out), 60);
+  return out;
+}
+
+/* Hapus cache otomatis begitu tab Syarat diedit (trigger onEdit sederhana) */
+function onEdit(e) {
+  if (e && e.range && e.range.getSheet().getName() === SHEET_SYARAT) CacheService.getScriptCache().remove('syarat');
+}
+
+function cek_() {
+  var ss = SpreadsheetApp.getActive();
+  var hitung = function (n) { var sh = ss.getSheetByName(n); return sh ? Math.max(0, sh.getLastRow() - 1) : -1; };
+  var folderOk = false;
+  try { folderOk = !!getFolder_(); } catch (e) {}
+  return { ok: true, versi: VERSI_BACKEND, syarat: getSyarat_().length, sekolah: hitung(SHEET_SEKOLAH), peserta: hitung(SHEET_PESERTA), folder: folderOk };
 }
 
 function cariSekolah_(q) {
@@ -104,6 +134,13 @@ function doPost(e) {
     if (!sekolah) return json_({ ok: false, pesan: 'Asal sekolah wajib diisi.' });
     if (d.setuju !== true) return json_({ ok: false, pesan: 'Persetujuan wajib dicentang.' });
 
+    /* Poka-yoke anti-bot: kolom jebakan harus kosong */
+    if (d.hp) return json_({ ok: true, id: 'TMB-X' });
+
+    /* Poka-yoke anti-dobel: nomor WA yang sama tidak dibuat baris baru */
+    var lama = cariPeserta_(wa);
+    if (lama) return json_({ ok: true, id: lama, duplikat: true });
+
     var files = Array.isArray(d.bukti) ? d.bukti : [];
     var jumlahSyarat = getSyarat_().length;
     if (files.length < jumlahSyarat) return json_({ ok: false, pesan: 'Bukti syarat belum lengkap.' });
@@ -120,16 +157,18 @@ function doPost(e) {
     });
 
     lock.waitLock(20000);
-    SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA).appendRow([
-      Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss'),
-      id,
-      aman_(nama),
-      wa,
-      aman_(sekolah),
-      aman_(String(d.npsn || '')),
-      'Ya',
-      links.join('\n')
-    ]);
+    var dobel = cariPeserta_(wa);   /* cek ulang di dalam kunci, untuk kiriman yang bersamaan */
+    if (dobel) return json_({ ok: true, id: dobel, duplikat: true });
+    tulisBaris_({
+      'Waktu Daftar': Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss'),
+      'ID Peserta': id,
+      'Nama': aman_(nama),
+      'WhatsApp': wa,
+      'Asal Sekolah': aman_(sekolah),
+      'NPSN': aman_(String(d.npsn || '')),
+      'Persetujuan': 'Ya',
+      'Bukti Syarat': links.join('\n')
+    });
     return json_({ ok: true, id: id });
   } catch (err) {
     return json_({ ok: false, pesan: 'Gagal menyimpan: ' + err.message });
@@ -139,6 +178,28 @@ function doPost(e) {
 }
 
 /* ---------- Helpers ---------- */
+
+/* Tulis berdasarkan NAMA kolom, jadi aman walau urutan kolom diubah atau kolom baru ditambahkan */
+function tulisBaris_(obj) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA) || getOrCreateSheet_(SpreadsheetApp.getActive(), SHEET_PESERTA, HEADER_PESERTA);
+  var header = sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
+  Object.keys(obj).forEach(function (k) {
+    if (header.indexOf(k) === -1) { header.push(k); sh.getRange(1, header.length).setValue(k).setFontWeight('bold'); }
+  });
+  var row = header.map(function (h) { return obj.hasOwnProperty(h) ? obj[h] : ''; });
+  sh.appendRow(row);
+}
+
+function cariPeserta_(wa) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA);
+  if (!sh || sh.getLastRow() < 2) return '';
+  var header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
+  var cWa = header.indexOf('WhatsApp'), cId = header.indexOf('ID Peserta');
+  if (cWa < 0 || cId < 0) return '';
+  var data = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getDisplayValues();
+  for (var i = data.length - 1; i >= 0; i--) if (String(data[i][cWa]).replace(/\D/g, '') === wa) return data[i][cId];
+  return '';
+}
 function normalisasiWA_(v) {
   var s = String(v || '').replace(/[^\d+]/g, '');
   if (s.indexOf('+') === 0) s = s.slice(1);

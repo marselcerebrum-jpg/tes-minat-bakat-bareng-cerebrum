@@ -314,5 +314,7 @@
   }
 
   window.buatStory = buatStory;
+  window.STORY_VERSI = "2026.10.09";
+  window.siapkanFontStory = pastikanFontPop;
   window.STORY_TEMA = Object.keys(TEMA);
 })();

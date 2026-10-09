@@ -64,6 +64,52 @@ Selama `APPS_SCRIPT_URL` masih kosong, web berjalan dalam **mode demo** (ada lab
 - **Melihat peserta:** tab **Peserta**. Kolom "Bukti Syarat" berisi link file di Google Drive (hanya bisa dibuka akun pemilik dan yang diberi akses).
 - **Daftar sekolah:** isi tab **Sekolah** (kolom NPSN, Nama Sekolah, Kabupaten/Kota, Provinsi) dari export Centil. Selama tab ini kosong, kolom asal sekolah menjadi isian bebas.
 
+## Poka-yoke (pencegah kesalahan)
+
+**Sisi peserta**
+- Pertanyaan tidak bisa terlewat: hasil hanya muncul setelah semua pertanyaan terjawab.
+- Ketukan ganda tidak akan menjawab pertanyaan berikutnya tanpa sengaja.
+- Progres tersimpan di perangkat. Kalau halaman ter-refresh atau tertutup, peserta ditawari melanjutkan tes (berlaku 24 jam).
+- Muncul peringatan kalau peserta menutup halaman di tengah tes.
+- Screenshot bukti yang sama untuk dua syarat berbeda akan ditolak.
+- Nama wajib berisi huruf, nomor WA divalidasi dan dirapikan ke format 62xxx.
+- Data dikirim di latar dengan coba ulang otomatis, dan dikirim ulang begitu HP kembali online. Kalau tetap gagal, ada tombol "Coba kirim lagi" di halaman hasil.
+- Saat dibuka dari browser bawaan Instagram/TikTok, peserta diberi petunjuk cara menyimpan gambar Story.
+
+**Sisi admin dan pengelolaan**
+- Kalau ada file yang hilang atau rusak, peserta melihat pesan "Sedang ada gangguan" beserta kode untuk admin, bukan layar kosong.
+- Kalau `config.js` salah ketik atau `APPS_SCRIPT_URL` salah format, muncul bilah merah peringatan bahwa data tidak tersimpan.
+- Kalau `riasec.js` diedit dan ada tipe minat tanpa pertanyaan (atau huruf tipe salah), web menolak berjalan dan menunjukkan letak kesalahannya.
+- Setiap file punya penanda versi. Halaman cek kesehatan memberi tahu file mana yang belum diperbarui atau salah folder.
+
+**Sisi server (Code.gs)**
+- Nomor WA yang sama tidak membuat baris baru (anti data dobel), termasuk kiriman yang bersamaan.
+- Data ditulis berdasarkan nama kolom, jadi aman walaupun urutan kolom di tab Peserta diubah atau kolom baru ditambahkan.
+- Baris judul di setiap tab diberi peringatan saat ada yang mencoba mengubahnya.
+- Link syarat tanpa `https://` dilengkapi otomatis.
+- Teks yang diawali `=`, `+`, `-`, `@` diamankan supaya tidak terbaca sebagai rumus.
+- Ada jebakan sederhana untuk menolak kiriman bot.
+- Daftar syarat disimpan sementara (cache) supaya cepat, dan otomatis diperbarui begitu tab Syarat diedit.
+
+## Cek kesehatan sistem (wajib sebelum event dibagikan)
+
+Buka alamat situs dengan tambahan `?cek=1`, misalnya:
+
+```
+https://tes-minat-bakat-bareng-cerebrum.vercel.app/?cek=1
+```
+
+Semua baris harus ✅. Kalau ada ❌, keterangannya menjelaskan apa yang perlu diperbaiki.
+
+## Cara update yang aman
+
+1. Di GitHub, masuk ke folder tempat `index.html` situs berada (folder yang dipakai sebagai Root Directory di Vercel).
+2. **Add file → Upload files**, lalu drag **isi** folder update (bukan foldernya). Folder `js` dan lainnya akan digabung otomatis.
+3. **Jangan upload `config.js`** kecuali memang ingin mengubah pengaturan, karena file itu berisi URL Apps Script.
+4. Commit, tunggu Vercel selesai, lalu buka `?cek=1` dan pastikan "Semua file versi …" sudah ✅.
+
+**Kalau `Code.gs` diperbarui:** di editor Apps Script buka **Deploy → Manage deployments → ikon pensil → Version: New version → Deploy**. **Jangan pilih "New deployment"**, karena itu membuat URL baru dan web akan terputus dari spreadsheet.
+
 ## Menjalankan di komputer
 
 Buka `index.html` langsung di browser, atau jalankan server lokal:

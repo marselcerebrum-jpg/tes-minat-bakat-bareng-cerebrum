@@ -1,13 +1,69 @@
 (function () {
   "use strict";
 
-  const CFG = window.CONFIG || {};
+  const VERSI = "2026.10.09";
+  const $ = (id) => document.getElementById(id);
+
+  /* ===== POKA-YOKE 1: file wajib harus terbaca, kalau tidak tampilkan pesan jelas ===== */
+  function layarGangguan(pesan) {
+    document.body.innerHTML = '<div style="max-width:520px;margin:80px auto;padding:28px;font-family:system-ui,sans-serif;text-align:center;border:1px solid #E6DADA;border-radius:18px;background:#fff;color:#26191A">' +
+      '<h1 style="font-size:1.4rem;margin:0 0 10px">Sedang ada gangguan</h1>' +
+      '<p style="color:#6E5C5D;margin:0 0 18px">Halaman ini belum bisa dibuka. Coba muat ulang beberapa saat lagi.</p>' +
+      '<button onclick="location.reload()" style="background:#8A1C1C;color:#fff;border:0;border-radius:12px;padding:12px 22px;font-weight:700;cursor:pointer">Muat ulang</button>' +
+      '<p style="color:#9a8a8a;font-size:.8rem;margin:22px 0 0">Kode untuk admin: ' + pesan + '</p></div>';
+  }
+  const hilang = [["riasec.js", window.RIASEC], ["data-snbp.js", window.SNBP_DATA], ["story.js", window.buatStory]].filter((x) => !x[1]).map((x) => x[0]);
+  if (hilang.length) { layarGangguan("file tidak terbaca: " + hilang.join(", ")); return; }
+
   const R = window.RIASEC;
   const D = window.SNBP_DATA;
   const ORDER = R.order;
+
+  /* Setiap tipe minat wajib punya minimal 1 pertanyaan */
+  const tipeKosong = ORDER.filter((t) => !R.questions.some((q) => q[0] === t));
+  const tipeAsing = R.questions.filter((q) => !ORDER.includes(q[0])).map((q) => q[0]);
+  if (tipeKosong.length || tipeAsing.length) {
+    layarGangguan("riasec.js: " + (tipeKosong.length ? "tipe tanpa pertanyaan " + tipeKosong.join(",") : "") + (tipeAsing.length ? " huruf tidak dikenal " + tipeAsing.join(",") : ""));
+    return;
+  }
+
+  /* ===== POKA-YOKE 2: pengaturan & alamat server harus valid ===== */
+  const CONFIG_HILANG = !window.CONFIG;
+  const CFG = window.CONFIG || {};
   const API = (CFG.APPS_SCRIPT_URL || "").trim();
-  const DEMO = !API;
-  const $ = (id) => document.getElementById(id);
+  const API_SALAH = !!API && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(API);
+  const DEMO = !API || API_SALAH || CONFIG_HILANG;
+  const MASALAH_CONFIG = CONFIG_HILANG ? "config.js tidak terbaca" : API_SALAH ? "APPS_SCRIPT_URL tidak valid (harus berakhiran /exec)" : "";
+
+  /* ===== POKA-YOKE 3: semua file harus versi yang sama ===== */
+  const versiFile = {
+    "index.html": (document.querySelector('meta[name="tmb-versi"]') || {}).content || "lama",
+    "riasec.js": R.versi || "lama",
+    "data-snbp.js": (D.meta && D.meta.versi) || "lama",
+    "story.js": window.STORY_VERSI || "lama",
+    "app.js": VERSI
+  };
+  const fileTidakSinkron = Object.keys(versiFile).filter((k) => versiFile[k] !== VERSI);
+  if (fileTidakSinkron.length) console.warn("[Tes Minat] File belum versi " + VERSI + ":", fileTidakSinkron.join(", "));
+
+  /* Gangguan tak terduga: beri tahu peserta, jangan diam saja */
+  window.addEventListener("error", (e) => {
+    if (!e.message || /Script error/.test(e.message)) return;
+    console.error("[Tes Minat]", e.message);
+    toast("Terjadi gangguan kecil. Kalau ada yang tidak berfungsi, muat ulang halaman.");
+  });
+  function toast(pesan) {
+    let t = $("tmb-toast");
+    if (!t) {
+      t = document.createElement("div"); t.id = "tmb-toast"; t.setAttribute("role", "status");
+      t.style.cssText = "position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:99;max-width:92vw;background:#26191A;color:#fff;padding:12px 18px;border-radius:12px;font-size:.9rem;box-shadow:0 10px 30px rgba(0,0,0,.25)";
+      document.body.appendChild(t);
+    }
+    t.textContent = pesan; t.style.display = "block";
+    clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = "none"; }, 5000);
+  }
+
+  const DI_APLIKASI = /Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|BytedanceWebview/i.test(navigator.userAgent);
   const fmt = (n) => Number(n).toLocaleString("id-ID");
 
   /* ---------- Data SNBP ---------- */
@@ -69,18 +125,20 @@
       const img = new Image();
       const url = URL.createObjectURL(file);
       img.onload = () => {
-        const max = 1600, sc = Math.min(1, max / Math.max(img.width, img.height));
+        const max = 1280, sc = Math.min(1, max / Math.max(img.width, img.height));
         const cv = document.createElement("canvas");
         cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
         cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
         URL.revokeObjectURL(url);
-        const dataUrl = cv.toDataURL("image/jpeg", 0.82);
+        const dataUrl = cv.toDataURL("image/jpeg", 0.72);
         resolve({ mime: "image/jpeg", data: dataUrl.split(",")[1], preview: dataUrl });
       };
       img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("File bukan gambar yang valid.")); };
       img.src = url;
     });
   }
+
+  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_TERDAFTAR = "tmb-terdaftar-v1";
 
   /* ---------- State ---------- */
   const state = {
@@ -140,16 +198,31 @@
   }
 
   /* ========== 1. POP-UP SYARAT ========== */
+  const KUNCI_SYARAT = "tmb-syarat-v1";
+  function bacaCacheSyarat() {
+    try { const v = JSON.parse(localStorage.getItem(KUNCI_SYARAT)); return Array.isArray(v) && v.length ? v : null; } catch (e) { return null; }
+  }
   async function muatSyarat() {
-    if (DEMO) { state.syarat = CFG.SYARAT_DEMO || []; return; }
+    if (DEMO) { state.syarat = CFG.SYARAT_DEMO || []; renderSyarat(); return; }
+    /* Tampilkan syarat dari kunjungan sebelumnya dulu supaya pop-up langsung terisi */
+    const cache = bacaCacheSyarat();
+    if (cache) { state.syarat = cache; renderSyarat(); }
     try {
       const r = await apiGet({ action: "syarat" });
       if (!r.ok) throw new Error(r.pesan);
-      state.syarat = r.syarat || [];
+      const baru = r.syarat || [];
+      try { localStorage.setItem(KUNCI_SYARAT, JSON.stringify(baru)); } catch (e) {}
+      if (JSON.stringify(baru) !== JSON.stringify(state.syarat)) {
+        state.syarat = baru;
+        state.bukti = state.bukti.slice(0, baru.length);
+        renderSyarat();
+      }
     } catch (e) {
-      $("syarat-error").textContent = "Syarat gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.";
-      $("syarat-error").classList.remove("hidden");
-      state.syarat = [];
+      if (!cache) {
+        $("syarat-error").textContent = "Syarat gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.";
+        $("syarat-error").classList.remove("hidden");
+        state.syarat = []; renderSyarat();
+      }
     }
   }
 
@@ -186,7 +259,11 @@
     $("syarat-error").classList.add("hidden");
     if (file.size > 15 * 1024 * 1024) { $("syarat-error").textContent = "Ukuran file maksimal 15 MB."; $("syarat-error").classList.remove("hidden"); return; }
     try {
-      state.bukti[i] = await kompres(file);
+      const hasil = await kompres(file);
+      const kembar = state.bukti.findIndex((b, k) => b && k !== i && b.data === hasil.data);
+      if (kembar > -1) throw new Error(`Screenshot ini sama dengan bukti syarat ${kembar + 1}. Unggah bukti yang berbeda untuk setiap syarat.`);
+      state.bukti[i] = hasil;
+      simpanProgres();
       renderSyarat();
     } catch (err) {
       $("syarat-error").textContent = err.message; $("syarat-error").classList.remove("hidden");
@@ -225,7 +302,7 @@
   }
   inpS.addEventListener("input", () => {
     const q = inpS.value.trim();
-    state.sekolah = sekolahTersedia ? "" : q; state.npsn = "";
+    state.sekolah = q; state.npsn = "";
     $("sekolah-hint").textContent = "";
     clearTimeout(timer);
     if (!sekolahTersedia || q.length < 3) { tutupSaran(); return; }
@@ -263,33 +340,90 @@
     state.nama = $("nama").value.trim();
     state.wa = normalisasiWA($("wa").value);
     state.setuju = $("setuju").checked;
-    if (!sekolahTersedia) state.sekolah = inpS.value.trim();
+    /* Nama sekolah yang diketik selalu diterima; memilih dari daftar hanya menambahkan NPSN */
+    const ketikan = inpS.value.trim();
+    if (ketikan !== state.sekolah) { state.sekolah = ketikan; state.npsn = ""; }
 
     if (!cekSyarat()) { tampilError("Unggah bukti syarat terlebih dahulu."); renderSyarat(); openModal("m-syarat"); return; }
-    if (state.nama.length < 2) { tampilError("Isi nama lengkapmu."); $("nama").focus(); return; }
+    if (state.nama.length < 2 || !/[a-zA-Z]{2,}/.test(state.nama)) { tampilError("Isi nama lengkapmu dengan huruf."); $("nama").focus(); return; }
     if (!state.wa) { tampilError("Nomor WhatsApp belum benar. Contoh: 081234567890."); $("wa").focus(); return; }
-    if (!state.sekolah) { tampilError(sekolahTersedia ? "Pilih asal sekolah dari daftar, atau pilih opsi \"Sekolahku tidak ada di daftar\"." : "Isi asal sekolahmu."); inpS.focus(); return; }
+    if (state.sekolah.length < 3) { tampilError("Isi asal sekolahmu."); inpS.focus(); return; }
     if (!state.jalur) { tampilError("Pilih rencana jalur masuk."); return; }
     if (!state.setuju) { tampilError("Centang persetujuan terlebih dahulu."); $("setuju").focus(); return; }
     tampilError("");
 
-    const btn = $("mulai");
-    btn.disabled = true; btn.setAttribute("aria-busy", "true"); btn.textContent = "Menyimpan data…";
-    try {
-      if (!DEMO) {
-        const r = await apiPost({
-          action: "daftar", nama: state.nama, wa: state.wa, sekolah: state.sekolah, npsn: state.npsn, setuju: true,
-          bukti: state.bukti.map((b) => ({ mime: b.mime, data: b.data }))
-        });
-        if (!r.ok) throw new Error(r.pesan || "Gagal menyimpan data.");
-        state.pesertaId = r.id;
+    if (!navigator.onLine) toast("Kamu sedang offline. Tes tetap bisa dikerjakan, datamu akan dikirim otomatis saat online.");
+    /* Data dikirim di latar; peserta langsung mulai tes tanpa menunggu */
+    state.mulai = true; simpanProgres();
+    kirimPendaftaran();
+    show("tes"); renderQ();
+  });
+
+  /* ---------- Pengiriman data di latar (dengan coba ulang otomatis) ---------- */
+  (function buatStatusSimpan() {
+    const box = document.createElement("div");
+    box.id = "simpan-status"; box.className = "note hidden"; box.setAttribute("role", "alert");
+    box.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 24px;font-weight:600;color:var(--brand);border:1px solid var(--brand-mid)";
+    box.innerHTML = '<span id="simpan-text"></span><button type="button" class="btn ghost" id="simpan-ulang" style="padding:10px 16px">Coba kirim lagi</button>';
+    $("v-hasil").prepend(box);
+  })();
+  let kirimJanji = null;
+  function kirimPendaftaran() {
+    if (DEMO) { kirimJanji = Promise.resolve({ ok: true }); return kirimJanji; }
+    if (state.pesertaId) return (kirimJanji = Promise.resolve({ ok: true, id: state.pesertaId }));
+    /* Nomor WA yang sama sudah pernah terdaftar dari perangkat ini: jangan kirim dobel */
+    const lama = bacaJSON(KUNCI_TERDAFTAR);
+    if (lama && lama.wa === state.wa && lama.id) { state.pesertaId = lama.id; return (kirimJanji = Promise.resolve({ ok: true, id: lama.id })); }
+    if (kirimJanji && !kirimSelesai) return kirimJanji;
+    const payload = {
+      action: "daftar", nama: state.nama, wa: state.wa, sekolah: state.sekolah, npsn: state.npsn, setuju: true,
+      bukti: state.bukti.map((b) => ({ mime: b.mime, data: b.data })), hp: ""
+    };
+    kirimSelesai = false;
+    kirimJanji = (async () => {
+      let terakhir = null;
+      for (let coba = 0; coba < 3; coba++) {
+        try {
+          const r = await apiPost(payload);
+          kirimSelesai = true;
+          if (r.ok) {
+            state.pesertaId = r.id;
+            tulisJSON(KUNCI_TERDAFTAR, { wa: state.wa, id: r.id });
+            simpanProgres();
+            return r;
+          }
+          return r; /* ditolak server (data tidak valid): tidak perlu dicoba ulang */
+        } catch (e) {
+          terakhir = e;
+          await new Promise((res) => setTimeout(res, 2000 * (coba + 1)));
+        }
       }
-      show("tes"); renderQ();
-    } catch (err) {
-      tampilError(err.message.startsWith("Gagal") || err.message.includes("tidak valid") ? err.message : "Gagal terhubung ke server. Periksa koneksi lalu coba lagi.");
-    } finally {
-      btn.disabled = false; btn.removeAttribute("aria-busy"); btn.textContent = "Mulai tes minat";
-    }
+      kirimSelesai = true;
+      return { ok: false, pesan: "Gagal terhubung ke server.", jaringan: true, err: terakhir };
+    })();
+    return kirimJanji;
+  }
+  let kirimSelesai = true;
+  /* Begitu kembali online, kirim ulang otomatis kalau tadi gagal */
+  window.addEventListener("online", () => {
+    if (!DEMO && state.mulai && !state.pesertaId && kirimSelesai) { kirimJanji = null; kirimPendaftaran(); }
+  });
+
+  async function pastikanTersimpan() {
+    const r = await (kirimJanji || kirimPendaftaran());
+    const el = $("simpan-status");
+    if (r && r.ok) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    $("simpan-text").textContent = r && !r.jaringan && r.pesan
+      ? "Data kamu belum tersimpan: " + r.pesan
+      : "Data kamu belum tersimpan karena koneksi bermasalah.";
+  }
+  $("simpan-ulang").addEventListener("click", async () => {
+    const b = $("simpan-ulang");
+    b.disabled = true; b.textContent = "Mengirim…";
+    kirimJanji = null;
+    await kirimPendaftaran(); await pastikanTersimpan();
+    b.disabled = false; b.textContent = "Coba kirim lagi";
   });
 
   /* ========== 3. TES (tanpa grafik) ========== */
@@ -304,16 +438,28 @@
     $("back").disabled = state.i === 0;
     $("lihat").classList.toggle("hidden", answered < R.questions.length);
   }
+  let kunciKetuk = false;
   $("scale").addEventListener("click", (e) => {
-    const b = e.target.closest("button"); if (!b) return;
+    const b = e.target.closest("button"); if (!b || kunciKetuk) return;
+    /* Cegah ketukan ganda yang tanpa sengaja menjawab pertanyaan berikutnya */
+    kunciKetuk = true; setTimeout(() => { kunciKetuk = false; }, 350);
     state.ans[state.i] = +b.dataset.v;
     const next = state.ans.findIndex((a, k) => !a && k > state.i);
     const anyEmpty = state.ans.findIndex((a) => !a);
     if (next > -1) state.i = next; else if (anyEmpty > -1) state.i = anyEmpty;
+    simpanProgres();
     renderQ();
   });
-  $("back").addEventListener("click", () => { if (state.i > 0) { state.i--; renderQ(); } });
-  $("lihat").addEventListener("click", () => { renderResult(); show("hasil"); });
+  $("back").addEventListener("click", () => { if (state.i > 0) { state.i--; simpanProgres(); renderQ(); } });
+  $("lihat").addEventListener("click", async () => {
+    const b = $("lihat");
+    b.disabled = true; b.setAttribute("aria-busy", "true"); b.textContent = "Menyiapkan hasil…";
+    await pastikanTersimpan();
+    b.disabled = false; b.removeAttribute("aria-busy"); b.textContent = "Lihat hasil";
+    if (state.ans.some((a) => !a)) { state.i = state.ans.findIndex((a) => !a); renderQ(); toast("Masih ada pertanyaan yang belum dijawab."); return; }
+    state.selesai = true; simpanProgres();
+    renderResult(); show("hasil");
+  });
 
   /* ========== 4. HASIL ========== */
   function holland(sc) { return [...ORDER].sort((a, b) => sc[b] - sc[a]).slice(0, 3); }
@@ -395,7 +541,9 @@
     renderRecs(scores());
   });
   $("ulang").addEventListener("click", () => {
-    state.ans.fill(0); state.i = 0; state.filter = "semua";
+    if (!confirm("Ulangi tes dari awal? Jawabanmu sebelumnya akan dihapus.")) return;
+    state.ans.fill(0); state.i = 0; state.filter = "semua"; state.selesai = false;
+    simpanProgres();
     show("tes"); renderQ();
   });
 
@@ -420,10 +568,15 @@
       $("story-img").src = storyUrl;
       const bisaShare = !!(navigator.canShare && navigator.canShare({ files: [storyFile] }));
       $("story-share").classList.toggle("hidden", !bisaShare);
-      $("story-hint").textContent = bisaShare
-        ? "Ketuk Bagikan lalu pilih Instagram, atau unduh gambarnya dulu lalu unggah ke Story."
-        : "Unduh gambar ini, lalu unggah ke Instagram Story dari HP-mu.";
+      $("story-hint").textContent = DI_APLIKASI
+        ? "Kamu membuka lewat aplikasi (misalnya Instagram). Tekan lama gambar di bawah lalu pilih Simpan. Kalau tidak bisa, ketuk menu ⋯ di pojok kanan atas, pilih Buka di browser, lalu ulangi."
+        : bisaShare
+          ? "Ketuk Bagikan lalu pilih Instagram, atau unduh gambarnya dulu lalu unggah ke Story."
+          : "Unduh gambar ini, lalu unggah ke Instagram Story dari HP-mu.";
       openModal("m-story");
+    } catch (err) {
+      console.error(err);
+      toast("Gambar gagal dibuat. Coba lagi, atau buka di browser Chrome/Safari.");
     } finally { btn.disabled = false; }
   });
   $("story-share").addEventListener("click", async () => {
@@ -432,6 +585,7 @@
     } catch (e) { /* dibatalkan pengguna */ }
   });
   $("story-download").addEventListener("click", () => {
+    if (DI_APLIKASI) toast("Kalau gambar tidak tersimpan, tekan lama gambarnya lalu pilih Simpan.");
     const a = document.createElement("a");
     a.href = storyUrl; a.download = storyFile.name;
     document.body.appendChild(a); a.click(); a.remove();
@@ -440,12 +594,87 @@
   $("m-story").addEventListener("click", (e) => { if (e.target.id === "m-story") closeModal("m-story"); });
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("m-story").classList.contains("hidden")) closeModal("m-story"); });
 
+  /* ===== POKA-YOKE 4: progres tersimpan di perangkat, tidak hilang kalau ter-refresh ===== */
+  function bacaJSON(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function tulisJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function hapusProgres() { try { localStorage.removeItem(KUNCI_PROGRES); } catch (e) {} }
+  function simpanProgres() {
+    const data = { ts: Date.now(), nama: state.nama, wa: state.wa, sekolah: state.sekolah, npsn: state.npsn, jalur: state.jalur,
+      pesertaId: state.pesertaId, ans: state.ans, i: state.i, mulai: !!state.mulai, selesai: !!state.selesai,
+      /* bukti hanya disimpan selama belum terkirim */
+      bukti: state.pesertaId ? [] : state.bukti.map((b) => b && { mime: b.mime, data: b.data, preview: b.preview }) };
+    if (!tulisJSON(KUNCI_PROGRES, data)) { data.bukti = []; tulisJSON(KUNCI_PROGRES, data); }
+  }
+
+  /* ===== POKA-YOKE 5: halaman cek kesehatan untuk admin (buka dengan ?cek=1) ===== */
+  async function halamanCek() {
+    closeModal("m-syarat");
+    const baris = [];
+    const tambah = (ok, judul, ket) => baris.push({ ok, judul, ket });
+    tambah(!CONFIG_HILANG, "config.js terbaca", CONFIG_HILANG ? "File config.js hilang atau ada salah ketik (tanda kutip/koma)." : "OK");
+    tambah(!!API && !API_SALAH, "Alamat Apps Script", !API ? "APPS_SCRIPT_URL masih kosong (mode demo)." : API_SALAH ? "Format salah. Harus https://script.google.com/macros/s/…/exec" : "Format benar");
+    tambah(!fileTidakSinkron.length, "Semua file versi " + VERSI, fileTidakSinkron.length ? "Belum diperbarui: " + fileTidakSinkron.map((f) => f + " (" + versiFile[f] + ")").join(", ") + ". Pastikan diupload ke folder yang benar." : "Sinkron");
+    if (API && !API_SALAH) {
+      try {
+        const r = await apiGet({ action: "cek" });
+        if (r && r.versi) {
+          tambah(true, "Backend Google terhubung", "Versi backend " + r.versi);
+          tambah(r.syarat > 0, "Syarat aktif di tab Syarat", r.syarat + " syarat");
+          tambah(true, "Tab Sekolah", r.sekolah > 0 ? r.sekolah + " sekolah (pencarian aktif)" : "Masih kosong (asal sekolah diisi bebas)");
+          tambah(true, "Peserta terdaftar", r.peserta + " baris di tab Peserta");
+          tambah(!!r.folder, "Folder bukti di Drive", r.folder ? "OK" : "Tidak ditemukan. Jalankan fungsi setup lagi.");
+        } else {
+          tambah(false, "Backend Google terhubung", "Terhubung, tapi Code.gs masih versi lama. Deploy versi baru (Manage deployments → Edit → New version).");
+        }
+      } catch (e) {
+        tambah(false, "Backend Google terhubung", "Tidak bisa dihubungi. Cek URL dan pastikan akses Web app = Anyone.");
+      }
+    }
+    tambah(!!(window.localStorage), "Penyimpanan progres di browser", window.localStorage ? "Tersedia" : "Tidak tersedia");
+    const main = document.querySelector("main");
+    main.innerHTML = '<section class="panel" style="max-width:720px;margin:0 auto"><h1 style="font-size:1.6rem;margin:0 0 6px">Cek kesehatan sistem</h1>' +
+      '<p class="muted" style="margin:0 0 18px">Halaman khusus admin. Semua harus ✅ sebelum event dibagikan.</p>' +
+      baris.map((b) => '<div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)"><span style="font-size:1.2rem">' + (b.ok ? "✅" : "❌") + '</span><div><strong>' + esc(b.judul) + '</strong><div class="muted" style="margin:2px 0 0">' + esc(b.ket) + '</div></div></div>').join("") +
+      '<p class="hint">Versi web: ' + VERSI + '</p></section>';
+  }
+
   /* ---------- Footer & mulai ---------- */
   $("src").textContent = `${D.meta.sumber}, jalur ${D.meta.jalur}, diperbarui ${D.meta.diperbarui}. Mencakup ${fmt(D.meta.nasional.prodi)} prodi di ${D.meta.nasional.ptn} PTN dengan total ${fmt(D.meta.nasional.dayaTampung)} kursi.`;
   $("yr").textContent = new Date().getFullYear();
   if (DEMO) { $("demo-bar").classList.remove("hidden"); $("sekolah-hint").textContent = ""; }
+  if (MASALAH_CONFIG) {
+    const bar = $("demo-bar");
+    bar.textContent = "Perhatian: pengaturan web bermasalah (" + MASALAH_CONFIG + "), jadi data peserta TIDAK tersimpan. Admin, buka halaman ini dengan ?cek=1.";
+    bar.style.background = "#B4442A"; bar.style.color = "#fff";
+  }
+  const vEl = document.createElement("span");
+  vEl.textContent = " · v" + VERSI; vEl.style.opacity = ".6";
+  $("yr").parentNode.appendChild(vEl);
 
-  show("profil");
-  openModal("m-syarat");
-  muatSyarat().then(renderSyarat);
+  /* Peringatan sebelum menutup halaman di tengah tes */
+  window.addEventListener("beforeunload", (e) => {
+    if (!$("v-tes").classList.contains("hidden") && state.ans.some(Boolean)) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  if (/[?&]cek=1/.test(location.search)) { halamanCek(); return; }
+
+  /* Lanjutkan tes yang belum selesai (misalnya halaman tertutup atau ter-refresh) */
+  const p = bacaJSON(KUNCI_PROGRES);
+  const masihBaru = p && Date.now() - (p.ts || 0) < 24 * 3600 * 1000;
+  if (masihBaru && p.mulai && !p.selesai && Array.isArray(p.ans) && p.ans.length === state.ans.length &&
+      confirm("Kamu punya tes yang belum selesai (" + p.ans.filter(Boolean).length + " dari " + p.ans.length + " terjawab). Lanjutkan?")) {
+    Object.assign(state, { nama: p.nama, wa: p.wa, sekolah: p.sekolah, npsn: p.npsn, jalur: p.jalur, setuju: true,
+      pesertaId: p.pesertaId || "", bukti: p.bukti || [], ans: p.ans, i: Math.min(p.i || 0, p.ans.length - 1), mulai: true });
+    if (!state.pesertaId) kirimPendaftaran();
+    show("tes"); renderQ();
+    muatSyarat();
+  } else {
+    if (p && !masihBaru) hapusProgres();
+    show("profil");
+    openModal("m-syarat");
+    muatSyarat();
+  }
+  /* Panaskan font Story di latar supaya tombol Bagikan lebih cepat */
+  if (window.requestIdleCallback) requestIdleCallback(() => { if (window.siapkanFontStory) window.siapkanFontStory(); });
+  else setTimeout(() => { if (window.siapkanFontStory) window.siapkanFontStory(); }, 3000);
 })();

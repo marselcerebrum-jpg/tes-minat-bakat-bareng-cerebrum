@@ -15,6 +15,7 @@
  */
 window.SNBP_DATA = {
   meta: {
+    versi: "2026.10.09",
     jalur: "SNBP",
     sumber: "Portal SNPMB (snpmb.id) via Centil Cerebrum",
     diperbarui: "29 April 2026",
