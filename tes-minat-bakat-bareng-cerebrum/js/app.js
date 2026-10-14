@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSI = "2026.10.13";
+  const VERSI = "2026.10.14";
   const $ = (id) => document.getElementById(id);
 
   /* ===== POKA-YOKE 1: file wajib harus terbaca, kalau tidak tampilkan pesan jelas ===== */
@@ -169,6 +169,7 @@
   const VIEWS = ["profil", "tes", "hasil"];
   function show(v) {
     VIEWS.forEach((x) => $("v-" + x).classList.toggle("hidden", x !== v));
+    if (v !== "hasil" && typeof sembunyikanLengket === "function") sembunyikanLengket();
     const idx = VIEWS.indexOf(v);
     document.querySelectorAll("#steps li").forEach((li, k) => {
       li.className = k === idx ? "on" : k < idx ? "done" : "";
@@ -560,35 +561,137 @@
   (function gayaLangkah() {
     const st = document.createElement("style");
     st.textContent = `
-      .langkah{margin:44px 0 0}
-      .langkah h2{font-size:clamp(1.4rem,3.2vw,1.9rem);font-weight:800;margin:0 0 6px}
-      .langkah-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:14px;margin-top:16px}
-      @media (max-width:820px){.langkah-grid{grid-template-columns:1fr}}
+      .langkah{margin:40px 0 0}
+      .langkah h2{font-size:clamp(1.3rem,3vw,1.7rem);font-weight:800;margin:0 0 6px}
       .langkah-card{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
-      .langkah-card.utama{border:2px solid var(--brand);background:var(--brand-soft)}
-      .langkah-card .ikon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:1.3rem}
+      .langkah-card .ikon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:1.3rem;flex-shrink:0}
       .langkah-card h3{font-size:1.1rem;margin:0}
-      .langkah-card p{margin:0;color:var(--muted);font-size:.92rem;flex:1}
-      .langkah-card .btn{width:100%;text-decoration:none;text-align:center}`;
+      .langkah-card p{margin:0;color:var(--muted);font-size:.92rem}
+      .langkah-card .btn{text-decoration:none;text-align:center}
+      .langkah-row{flex-direction:row;flex-wrap:wrap;align-items:center;gap:16px}
+      .langkah-row .isi{flex:1;min-width:220px}
+
+      /* ===== KLIMAKS: 3 aksi utama ===== */
+      .klimaks{position:relative;overflow:hidden;margin:36px 0 0;border-radius:26px;padding:28px 24px 24px;color:#fff;
+        background:linear-gradient(140deg,#A52A2A 0%,#8A1C1C 45%,#5E0F12 100%);box-shadow:0 18px 40px rgba(94,15,18,.28)}
+      .klimaks::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.18;
+        background-image:radial-gradient(rgba(255,255,255,.9) 1.4px,transparent 1.6px);background-size:18px 18px;
+        -webkit-mask-image:linear-gradient(120deg,#000 0%,transparent 55%);mask-image:linear-gradient(120deg,#000 0%,transparent 55%)}
+      .klimaks > *{position:relative}
+      .klimaks-badge{display:inline-block;background:#F4D58D;color:#3A1A0E;font-weight:800;font-size:.85rem;padding:6px 12px;border-radius:999px;transform:rotate(-2deg)}
+      .klimaks h2{color:#fff;font-size:clamp(1.6rem,4.2vw,2.4rem);font-weight:800;margin:14px 0 6px;line-height:1.12}
+      .klimaks .sub{color:rgba(255,255,255,.85);margin:0 0 20px;max-width:60ch}
+      .ks-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+      @media (max-width:860px){.ks-list{grid-template-columns:1fr}}
+      .ks{display:flex;flex-direction:column;gap:12px;background:var(--surface);color:var(--ink);border-radius:18px;padding:18px;border:2px solid transparent}
+      .ks.utama{border-color:#F4D58D;box-shadow:0 0 0 4px rgba(244,213,141,.35)}
+      .ks-top{display:flex;gap:12px;align-items:flex-start}
+      .ks-no{flex-shrink:0;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:"Montserrat",sans-serif;font-weight:800;background:var(--brand);color:var(--on-brand)}
+      .ks.utama .ks-no{background:#F4D58D;color:#3A1A0E}
+      .ks strong{display:block;font-size:1.05rem;line-height:1.25}
+      .ks span.d{display:block;color:var(--muted);font-size:.88rem;margin-top:3px}
+      .ks-btn{margin-top:auto;display:flex !important;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;padding:10px 16px;text-align:center;line-height:1.2;
+        border:0;border-radius:14px;background:var(--brand);color:var(--on-brand) !important;font-weight:800;font-size:1rem;text-decoration:none;cursor:pointer;
+        box-shadow:0 6px 0 #5E0F12;transition:transform .08s ease,box-shadow .08s ease}
+      .ks-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #5E0F12}
+      .ks.utama .ks-btn{background:linear-gradient(135deg,#8A1C1C,#B8402F);animation:ks-denyut 2.2s ease-in-out infinite}
+      @keyframes ks-denyut{0%,100%{box-shadow:0 6px 0 #5E0F12,0 0 0 0 rgba(184,64,47,.55)}60%{box-shadow:0 6px 0 #5E0F12,0 0 0 9px rgba(184,64,47,0)}}
+      @media (prefers-reduced-motion:reduce){.ks.utama .ks-btn{animation:none}}
+      .ks-btn svg{width:22px;height:22px}
+      #slot-story{margin-top:auto}
+      .klimaks .catatan{color:rgba(255,255,255,.8);font-size:.82rem;margin:14px 0 0}
+
+      /* ===== Bilah lengket (HP), muncul setelah melewati klimaks ===== */
+      .cta-lengket{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;gap:8px;padding:10px 12px;
+        padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);
+        box-shadow:0 -10px 30px rgba(40,10,10,.12);transform:translateY(110%);transition:transform .25s ease}
+      .cta-lengket.tampil{transform:translateY(0)}
+      .cta-lengket a,.cta-lengket button{flex:1;min-height:50px;border-radius:12px;font-weight:800;font-size:.95rem;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;cursor:pointer}
+      .cta-lengket .a1{background:var(--brand);color:var(--on-brand);border:0}
+      .cta-lengket .a2{background:transparent;color:var(--brand);border:2px solid var(--brand)}
+      @media (min-width:861px){.cta-lengket{left:50%;right:auto;bottom:16px;width:min(560px,92vw);transform:translate(-50%,140%);border-radius:16px;border:1px solid var(--line)}
+        .cta-lengket.tampil{transform:translate(-50%,0)}}`;
     document.head.appendChild(st);
   })();
 
-  function renderLangkah(sc) {
-    let box = $("langkah");
-    if (!box) {
-      box = document.createElement("section");
-      box.id = "langkah"; box.className = "langkah";
-      const judulProdi = $("v-hasil").querySelector(".section-title");
-      $("v-hasil").insertBefore(box, judulProdi);
-    }
+  function hitungLink(sc) {
     const p = pengaturan || {};
     const grup = p.grup || {};
     const atas = ranking(sc, "semua").slice(0, 3);
     const kelompok = atas[0] ? atas[0].kelompok : "campuran";
     const linkGrup = grup[kelompok] || grup.umum || grup.saintek || grup.soshum || grup.campuran || "";
-    const labelKelompok = { saintek: "Saintek", soshum: "Soshum", campuran: "" }[kelompok] || "";
+    return { p, atas, kelompok, linkGrup, waLangsung: /chat\.whatsapp\.com/.test(linkGrup) };
+  }
+
+  /* KLIMAKS: Bagikan Story, Gabung grup, Ikut Tryout */
+  function renderKlimaks(sc) {
+    let box = $("klimaks");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "klimaks"; box.className = "klimaks"; box.setAttribute("aria-labelledby", "klimaks-judul");
+      const anchor = $("v-hasil").querySelector(".grid");
+      anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    }
+    /* Ambil referensi tombol Story SEBELUM isi kotak diganti, supaya tidak ikut terhapus */
+    const bs = $("btn-story");
+    const { p, atas, kelompok, linkGrup, waLangsung } = hitungLink(sc);
+    const labelKelompok = { saintek: " Saintek", soshum: " Soshum" }[kelompok] || "";
+    const prodi1 = atas[0] ? atas[0].label : "jurusan impianmu";
+    const panggilan = state.nama ? esc(state.nama.split(" ")[0]) : "kamu";
+    const langkah = [{ id: "story", utama: true, judul: "Pamerin hasilmu", isi: "Bagikan ke Instagram Story & tag @cerebrum.id. Siapa tahu di-repost!" }];
+    if (linkGrup) langkah.push({ id: "grup", judul: `Gabung Grup Pejuang PTN${labelKelompok}`, isi: "Info jadwal SNBP/SNBT, live class & latihan soal gratis bareng teman seperjuangan.",
+      tombol: waLangsung ? "Gabung grup WhatsApp" : "Pilih & gabung grup", ikon: "👥", href: linkGrup });
+    if (p.link_tryout) langkah.push({ id: "tryout", judul: "Ukur peluangmu", isi: `Nilaimu sudah cukup untuk ${prodi1}? Cek lewat tryout, gratis!`,
+      tombol: p.teks_tryout || "Ikut Tryout GRATIS", ikon: "📝", href: p.link_tryout });
+
+    box.innerHTML = `<span class="klimaks-badge">🎉 Hasilmu sudah keluar!</span>
+      <h2 id="klimaks-judul">Jangan berhenti di sini, ${panggilan}!</h2>
+      <p class="sub">${langkah.length > 1 ? `Selesaikan ${langkah.length} langkah ini` : "Satu langkah lagi"} untuk mulai serius kejar <strong>${esc(prodi1)}</strong>.</p>
+      <ol class="ks-list">${langkah.map((l, i) => `<li class="ks${l.utama ? " utama" : ""}">
+        <div class="ks-top"><span class="ks-no">${i + 1}</span><div><strong>${esc(l.judul)}</strong><span class="d">${esc(l.isi)}</span></div></div>
+        ${l.id === "story" ? `<div id="slot-story"></div>` : `<a class="ks-btn" href="${esc(l.href)}" target="_blank" rel="noopener" data-cta="${l.id}"><span aria-hidden="true">${l.ikon}</span> ${esc(l.tombol)}</a>`}
+      </li>`).join("")}</ol>`;
+    /* Pindahkan tombol Story asli (lengkap dengan fungsinya) ke dalam langkah 1 */
+    bs.className = "ks-btn"; bs.style.marginTop = "0";
+    $("slot-story").appendChild(bs);
+    renderLengket(linkGrup, p.link_tryout, p.teks_tryout);
+  }
+
+  /* Bilah lengket di bawah layar, supaya CTA tetap terlihat saat peserta menggulir daftar prodi */
+  let pengamatKlimaks = null;
+  function renderLengket(linkGrup, linkTryout) {
+    let bar = $("cta-lengket");
+    if (!bar) {
+      bar = document.createElement("div"); bar.id = "cta-lengket"; bar.className = "cta-lengket"; bar.setAttribute("aria-label", "Aksi cepat");
+      document.body.appendChild(bar);
+    }
+    const kedua = linkTryout ? { href: linkTryout, teks: "📝 Tryout GRATIS" } : linkGrup ? { href: linkGrup, teks: "👥 Gabung grup" } : null;
+    bar.innerHTML = `<button type="button" class="a1" id="lengket-story">📸 Bagikan Story</button>` +
+      (kedua ? `<a class="a2" href="${esc(kedua.href)}" target="_blank" rel="noopener">${kedua.teks}</a>` : "");
+    $("lengket-story").onclick = () => $("btn-story").click();
+    if (pengamatKlimaks) pengamatKlimaks.disconnect();
+    if ("IntersectionObserver" in window) {
+      pengamatKlimaks = new IntersectionObserver(([en]) => {
+        const lewat = !en.isIntersecting && en.boundingClientRect.top < 0;
+        bar.classList.toggle("tampil", lewat && !$("v-hasil").classList.contains("hidden"));
+      });
+      pengamatKlimaks.observe($("klimaks"));
+    }
+  }
+  function sembunyikanLengket() { const b = $("cta-lengket"); if (b) b.classList.remove("tampil"); }
+
+  /* Langkah tambahan (sekunder): konsultasi dengan Kakak Mentor */
+  function renderLangkah(sc) {
+    let box = $("langkah");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "langkah"; box.className = "langkah";
+      $("v-hasil").insertBefore(box, $("v-hasil").querySelector(".section-title"));
+    }
+    renderKlimaks(sc);
+    const { p, atas } = hitungLink(sc);
     const sales = Array.isArray(p.wa_sales) ? p.wa_sales : [];
-    /* Peserta yang sama (idem) selalu diarahkan ke sales yang sama walau dibagi bergiliran */
+    /* Peserta yang sama selalu diarahkan ke sales yang sama walau dibagi bergiliran */
     const nomorSales = sales.length ? sales[hashAngka(state.pesertaId || state.idem || state.nama) % sales.length] : "";
     const tipe = R.types[state.hasil.code[0]];
     const duaProdi = atas.slice(0, 2).map((r) => r.label).join(" atau ");
@@ -596,22 +699,13 @@
       `Hasil tes minatku ${tipe.id} (${state.hasil.code.join("")}), prodi yang paling cocok: ${atas.map((r) => r.label).join(", ")}. ` +
       `Rencana jalur: ${state.jalur || "-"}. Aku mau konsultasi strategi pilih jurusan & kampus dong 🙏` + (state.pesertaId ? ` (ID: ${state.pesertaId})` : "");
     const linkWA = nomorSales ? (nomorSales === "#demo" ? "#demo" : `https://wa.me/${nomorSales}?text=${encodeURIComponent(pesan)}`) : "";
-
-    const kartu = [];
-    if (linkGrup) kartu.push({ utama: true, ikon: "👥", judul: `Gabung Grup Pejuang PTN${labelKelompok ? " " + labelKelompok : ""}`,
-      isi: "Dapat info jurusan, jadwal SNBP/SNBT, live class, dan latihan soal gratis bareng teman seperjuangan.", tombol: "Gabung grup WhatsApp", href: linkGrup });
-    if (p.link_tryout) kartu.push({ ikon: "📝", judul: "Ukur peluangmu",
-      isi: `Kamu sudah tahu jurusannya. Sekarang cek, nilaimu sudah cukup untuk ${atas[0] ? atas[0].label : "jurusan impianmu"} belum?`, tombol: p.teks_tryout || "Ikut Tryout SNBT GRATIS", href: p.link_tryout });
-    if (linkWA) kartu.push({ ikon: "💬", judul: "Konsultasi strategi jurusan",
-      isi: (p.teks_konsultasi || `Masih mikir pilih ${duaProdi || "jurusanmu"} yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di ${state.jalur || "SNBP/SNBT"}, sesuai peluang keterimamu. Gratis, 15 menit aja.`),
-      tombol: "Chat Kakak Mentor", href: linkWA });
-
-    if (!kartu.length) { box.classList.add("hidden"); return; }
+    if (!linkWA) { box.classList.add("hidden"); return; }
     box.classList.remove("hidden");
-    box.innerHTML = `<h2>Langkah selanjutnya 🚀</h2><p class="muted narrow">Hasil tes baru langkah pertama. Ini yang bisa kamu lakukan sekarang.</p>
-      <div class="langkah-grid">${kartu.map((k) => `<div class="langkah-card${k.utama ? " utama" : ""}">
-        <span class="ikon" aria-hidden="true">${k.ikon}</span><h3>${esc(k.judul)}</h3><p>${esc(k.isi)}</p>
-        <a class="btn${k.utama ? "" : " ghost"}" href="${esc(k.href)}" target="_blank" rel="noopener">${esc(k.tombol)}</a></div>`).join("")}</div>`;
+    const isi = p.teks_konsultasi || `Masih mikir pilih ${duaProdi || "jurusanmu"} yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di ${state.jalur || "SNBP/SNBT"}, sesuai peluang keterimamu. Gratis, 15 menit aja.`;
+    box.innerHTML = `<div class="langkah-card langkah-row">
+        <span class="ikon" aria-hidden="true">💬</span>
+        <div class="isi"><h3>Konsultasi strategi jurusan</h3><p style="margin-top:4px">${esc(isi)}</p></div>
+        <a class="btn ghost" href="${esc(linkWA)}" target="_blank" rel="noopener">Chat Kakak Mentor</a></div>`;
   }
   /* Di mode demo, tombol tidak membuka WhatsApp sungguhan */
   document.addEventListener("click", (e) => {
@@ -752,7 +846,7 @@
           if (!pg) tambah(false, "Tab Pengaturan", "Belum ada. Tempel Code.gs terbaru, jalankan setup, lalu deploy versi baru.");
           else {
             const g = Object.keys(pg.grup || {});
-            tambah(g.length > 0, "Link grup WhatsApp", g.length ? "Terisi: " + g.join(", ") : "Belum diisi. Tombol gabung grup tidak muncul.");
+            tambah(g.length > 0, "Link grup", g.length ? "Terisi: " + g.map((k) => k + " → " + pg.grup[k]).join(", ") : "Belum diisi. Langkah gabung grup tidak muncul.");
             tambah((pg.wa_sales || []).length > 0, "Nomor WA tim sales", (pg.wa_sales || []).length ? pg.wa_sales.length + " nomor (dibagi bergiliran)" : "Belum diisi. Tombol konsultasi tidak muncul.");
             tambah(!!pg.link_tryout, "Link tryout", pg.link_tryout || "Belum diisi. Tombol tryout tidak muncul.");
             tambah(true, "Teks ajakan referral", pg.teks_referral ? pg.teks_referral : "Pakai teks bawaan (kolom teks_referral kosong)");

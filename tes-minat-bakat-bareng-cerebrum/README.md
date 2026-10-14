@@ -64,6 +64,15 @@ Selama `APPS_SCRIPT_URL` masih kosong, web berjalan dalam **mode demo** (ada lab
 - **Melihat peserta:** tab **Peserta**. Kolom "Bukti Syarat" berisi link file di Google Drive (hanya bisa dibuka akun pemilik dan yang diberi akses).
 - **Daftar sekolah:** isi tab **Sekolah** (kolom NPSN, Nama Sekolah, Kabupaten/Kota, Provinsi) dari export Centil. Selama tab ini kosong, kolom asal sekolah menjadi isian bebas.
 
+## Klimaks halaman hasil
+
+Tepat di bawah hasil tes, ada blok maroon **"Jangan berhenti di sini!"** berisi 3 langkah bernomor dengan tombol besar:
+1. **Pamerin hasilmu**: Bagikan ke Instagram Story (tombol utama, berdenyut halus)
+2. **Gabung Grup Pejuang PTN**: ke link grup di tab Pengaturan. Boleh link grup WhatsApp langsung atau halaman pilihan grup seperti `https://app.cerebrum.id/link`.
+3. **Ukur peluangmu**: ke link tryout di tab Pengaturan
+
+Saat peserta menggulir ke daftar prodi, muncul **bilah lengket** di bawah layar berisi tombol "Bagikan Story" dan "Tryout GRATIS", supaya ajakan tetap terlihat. Konsultasi dengan Kakak Mentor ditampilkan sebagai ajakan sekunder di bawah blok klimaks.
+
 ## Langkah selanjutnya (grup, tryout, konsultasi sales)
 
 Di halaman hasil, peserta melihat 3 tombol:

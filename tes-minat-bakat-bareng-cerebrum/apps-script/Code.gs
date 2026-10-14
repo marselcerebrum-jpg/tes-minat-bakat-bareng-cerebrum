@@ -14,7 +14,7 @@
  *   Sekolah : daftar sekolah untuk pilihan "Asal sekolah" (diisi dari export Centil)
  */
 
-var VERSI_BACKEND = '2026.10.13';
+var VERSI_BACKEND = '2026.10.14';
 var SHEET_PESERTA = 'Peserta';
 var SHEET_SYARAT = 'Syarat';
 var SHEET_SEKOLAH = 'Sekolah';
@@ -28,7 +28,7 @@ var HEADER_SYARAT = ['No', 'Syarat', 'Link (opsional)', 'Aktif (Ya/Tidak)'];
 var HEADER_SEKOLAH = ['NPSN', 'Nama Sekolah', 'Kabupaten/Kota', 'Provinsi'];
 var HEADER_PENGATURAN = ['Kunci (jangan diubah)', 'Nilai', 'Keterangan'];
 var ISI_PENGATURAN = [
-  ['grup_umum', '', 'Link grup WhatsApp untuk semua peserta. Dipakai jika grup per rumpun di bawah kosong. Format: https://chat.whatsapp.com/...'],
+  ['grup_umum', '', 'Link grup untuk semua peserta: link grup WhatsApp (https://chat.whatsapp.com/...) atau halaman pilihan grup (misalnya https://app.cerebrum.id/link). Dipakai jika grup per rumpun di bawah kosong.'],
   ['grup_saintek', '', 'Link grup WhatsApp untuk peserta yang rekomendasi utamanya rumpun Saintek (opsional)'],
   ['grup_soshum', '', 'Link grup WhatsApp untuk peserta yang rekomendasi utamanya rumpun Soshum (opsional)'],
   ['grup_campuran', '', 'Link grup WhatsApp untuk rumpun campuran, misalnya Psikologi, DKV, Pendidikan (opsional)'],
@@ -134,8 +134,10 @@ function getPengaturan_() {
       var k = String(r[0]).trim(), v = String(r[1]).trim();
       if (!v) return;
       if (/^grup_/.test(k)) {
-        if (/^(https?:\/\/)?chat\.whatsapp\.com\/[A-Za-z0-9]+/.test(v)) out.grup[k.slice(5)] = /^https?:/.test(v) ? v : 'https://' + v;
-        else out.masalah.push(k + ': bukan link grup WhatsApp');
+        /* Boleh link grup WhatsApp langsung ATAU halaman pilihan grup (misalnya app.cerebrum.id/link) */
+        var u = /^https?:\/\//i.test(v) ? v : 'https://' + v;
+        if (/^https?:\/\/[a-z0-9-]+(\.[a-z0-9-]+)+(\/\S*)?$/i.test(u)) out.grup[k.slice(5)] = u;
+        else out.masalah.push(k + ': bukan link yang valid');
       } else if (k === 'wa_sales') {
         v.split(/[,;\n]+/).forEach(function (n) {
           var w = normalisasiWA_(n);
