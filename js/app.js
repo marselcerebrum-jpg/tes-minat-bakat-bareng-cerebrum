@@ -1,32 +1,84 @@
 (function () {
   "use strict";
 
+  const VERSI = "2026.10.14";
+  const $ = (id) => document.getElementById(id);
+
+  /* ===== POKA-YOKE 1: file wajib harus terbaca, kalau tidak tampilkan pesan jelas ===== */
+  function layarGangguan(pesan) {
+    document.body.innerHTML = '<div style="max-width:520px;margin:80px auto;padding:28px;font-family:system-ui,sans-serif;text-align:center;border:1px solid #E6DADA;border-radius:18px;background:#fff;color:#26191A">' +
+      '<h1 style="font-size:1.4rem;margin:0 0 10px">Sedang ada gangguan</h1>' +
+      '<p style="color:#6E5C5D;margin:0 0 18px">Halaman ini belum bisa dibuka. Coba muat ulang beberapa saat lagi.</p>' +
+      '<button onclick="location.reload()" style="background:#8A1C1C;color:#fff;border:0;border-radius:12px;padding:12px 22px;font-weight:700;cursor:pointer">Muat ulang</button>' +
+      '<p style="color:#9a8a8a;font-size:.8rem;margin:22px 0 0">Kode untuk admin: ' + pesan + '</p></div>';
+  }
+  const hilang = [["riasec.js", window.RIASEC], ["data-snbp.js", window.SNBP_DATA], ["story.js", window.buatStory]].filter((x) => !x[1]).map((x) => x[0]);
+  if (hilang.length) { layarGangguan("file tidak terbaca: " + hilang.join(", ")); return; }
+
   const R = window.RIASEC;
   const D = window.SNBP_DATA;
   const ORDER = R.order;
-  const $ = (id) => document.getElementById(id);
+
+  /* Setiap tipe minat wajib punya minimal 1 pertanyaan */
+  const tipeKosong = ORDER.filter((t) => !R.questions.some((q) => q[0] === t));
+  const tipeAsing = R.questions.filter((q) => !ORDER.includes(q[0])).map((q) => q[0]);
+  if (tipeKosong.length || tipeAsing.length) {
+    layarGangguan("riasec.js: " + (tipeKosong.length ? "tipe tanpa pertanyaan " + tipeKosong.join(",") : "") + (tipeAsing.length ? " huruf tidak dikenal " + tipeAsing.join(",") : ""));
+    return;
+  }
+
+  /* ===== POKA-YOKE 2: pengaturan & alamat server harus valid ===== */
+  const CONFIG_HILANG = !window.CONFIG;
+  const CFG = window.CONFIG || {};
+  const API = (CFG.APPS_SCRIPT_URL || "").trim();
+  const API_SALAH = !!API && !/^https:\/\/script\.google\.com\/macros\/s\/[\w-]+\/exec$/.test(API);
+  const DEMO = !API || API_SALAH || CONFIG_HILANG;
+  const MASALAH_CONFIG = CONFIG_HILANG ? "config.js tidak terbaca" : API_SALAH ? "APPS_SCRIPT_URL tidak valid (harus berakhiran /exec)" : "";
+
+  /* ===== POKA-YOKE 3: semua file harus versi yang sama ===== */
+  const versiFile = {
+    "index.html": (document.querySelector('meta[name="tmb-versi"]') || {}).content || "lama",
+    "riasec.js": R.versi || "lama",
+    "data-snbp.js": (D.meta && D.meta.versi) || "lama",
+    "story.js": window.STORY_VERSI || "lama",
+    "app.js": VERSI
+  };
+  const fileTidakSinkron = Object.keys(versiFile).filter((k) => versiFile[k] !== VERSI);
+  if (fileTidakSinkron.length) console.warn("[Tes Minat] File belum versi " + VERSI + ":", fileTidakSinkron.join(", "));
+
+  /* Gangguan tak terduga: beri tahu peserta, jangan diam saja */
+  window.addEventListener("error", (e) => {
+    if (!e.message || /Script error/.test(e.message)) return;
+    console.error("[Tes Minat]", e.message);
+    toast("Terjadi gangguan kecil. Kalau ada yang tidak berfungsi, muat ulang halaman.");
+  });
+  function toast(pesan) {
+    let t = $("tmb-toast");
+    if (!t) {
+      t = document.createElement("div"); t.id = "tmb-toast"; t.setAttribute("role", "status");
+      t.style.cssText = "position:fixed;left:50%;bottom:calc(20px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);z-index:99;max-width:92vw;background:#26191A;color:#fff;padding:12px 18px;border-radius:12px;font-size:.9rem;box-shadow:0 10px 30px rgba(0,0,0,.25)";
+      document.body.appendChild(t);
+    }
+    t.textContent = pesan; t.style.display = "block";
+    clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = "none"; }, 5000);
+  }
+
+  const DI_APLIKASI = /Instagram|FBAN|FBAV|FB_IAB|Line\/|TikTok|musical_ly|BytedanceWebview/i.test(navigator.userAgent);
   const fmt = (n) => Number(n).toLocaleString("id-ID");
 
-  /* ---------- Data parsing ---------- */
+  /* ---------- Data SNBP ---------- */
   const summary = {};
   D.ringkasan.trim().split("\n").forEach((line) => {
     const [f, nProdi, nPtn, dt] = line.split("|");
     summary[f] = { nProdi: +nProdi, nPtn: +nPtn, dt: +dt };
   });
-
   const rows = {};
   D.prodi.trim().split("\n").forEach((line) => {
     const [f, kode, prodi, ptn, jenjang, dt26, pem25, dt25, grup] = line.split("|");
-    (rows[f] = rows[f] || []).push({
-      kode, prodi, ptn, jenjang,
-      dt26: +dt26,
-      pem25: pem25 === "" ? null : +pem25,
-      dt25: dt25 === "" ? 0 : +dt25,
-      grup
-    });
+    (rows[f] = rows[f] || []).push({ kode, prodi, ptn, jenjang, dt26: +dt26, pem25: pem25 === "" ? null : +pem25, dt25: dt25 === "" ? 0 : +dt25, grup });
   });
 
-  /* ---------- Formatting helpers ---------- */
+  /* ---------- Helpers ---------- */
   const KEEP_UPPER = new Set(["UPN", "UIN", "ISI", "ISBI", "IPB", "PSDKU", "PGSD", "STEI-K", "STEI-R", "FSRD", "FTMD", "TOUNA", "D3", "D4"]);
   const LOWER = new Set(["dan", "di", "untuk", "&"]);
   function title(s) {
@@ -43,17 +95,52 @@
   }
   function keketatan(r) {
     if (!r.pem25 || !r.dt25) return { text: "—", sub: "data 2025 tidak tersedia", cls: "" };
-    const ratio = r.pem25 / r.dt25;
-    const pct = (r.dt25 / r.pem25) * 100;
+    const ratio = r.pem25 / r.dt25, pct = (r.dt25 / r.pem25) * 100;
     let label, cls;
     if (pct < 8) { label = "Sangat ketat"; cls = "k-high"; }
     else if (pct < 20) { label = "Ketat"; cls = "k-mid"; }
     else { label = "Peluang lebih besar"; cls = "k-low"; }
     return { text: "1 : " + (ratio < 10 ? ratio.toFixed(1).replace(".", ",") : Math.round(ratio)), sub: label + " (" + pct.toFixed(1).replace(".", ",") + "% diterima)", cls };
   }
+  async function apiGet(params) {
+    const url = API + (API.includes("?") ? "&" : "?") + new URLSearchParams(params).toString();
+    const res = await fetch(url, { method: "GET" });
+    return res.json();
+  }
+  async function apiPost(body) {
+    /* text/plain menghindari preflight CORS di Apps Script */
+    const res = await fetch(API, { method: "POST", body: JSON.stringify(body) });
+    return res.json();
+  }
+  /* Kompres gambar ke JPEG maks 1600 px supaya unggahan ringan */
+  function kompres(file) {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      const url = URL.createObjectURL(file);
+      img.onload = () => {
+        const max = 1280, sc = Math.min(1, max / Math.max(img.width, img.height));
+        const cv = document.createElement("canvas");
+        cv.width = Math.round(img.width * sc); cv.height = Math.round(img.height * sc);
+        cv.getContext("2d").drawImage(img, 0, 0, cv.width, cv.height);
+        URL.revokeObjectURL(url);
+        const dataUrl = cv.toDataURL("image/jpeg", 0.72);
+        resolve({ mime: "image/jpeg", data: dataUrl.split(",")[1], preview: dataUrl });
+      };
+      img.onerror = () => { URL.revokeObjectURL(url); reject(new Error("File bukan gambar yang valid.")); };
+      img.src = url;
+    });
+  }
+
+  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_PENGATURAN = "tmb-pengaturan-v1", KUNCI_REF = "tmb-ref-v1";
+  const POLA_ID = /^TMB-\d{6}-[A-Z0-9]{6}$/;
+  const idAcak = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
 
   /* ---------- State ---------- */
-  const state = { nama: "", jalur: "", i: 0, ans: Array(R.questions.length).fill(0), filter: "semua" };
+  const state = {
+    nama: "", sekolah: "", npsn: "", jalur: "", setuju: false,
+    syarat: [], bukti: [], pesertaId: "", idem: idAcak(),
+    i: 0, ans: Array(R.questions.length).fill(0), filter: "semua", hasil: null
+  };
 
   function scores() {
     const sum = {}, cnt = {};
@@ -64,7 +151,7 @@
     return out;
   }
 
-  /* ---------- Hexagon chart ---------- */
+  /* ---------- Grafik segi enam ---------- */
   function hexSVG(sc) {
     const cx = 160, cy = 165, RAD = 112;
     const pt = (k, r) => { const a = (-90 + k * 60) * Math.PI / 180; return [cx + r * Math.cos(a), cy + r * Math.sin(a)]; };
@@ -78,10 +165,11 @@
     return `<svg viewBox="0 0 320 340" role="img" aria-label="Peta minat RIASEC: ${label}">${g}</svg>`;
   }
 
-  /* ---------- Views ---------- */
+  /* ---------- Navigasi ---------- */
   const VIEWS = ["profil", "tes", "hasil"];
   function show(v) {
     VIEWS.forEach((x) => $("v-" + x).classList.toggle("hidden", x !== v));
+    if (v !== "hasil" && typeof sembunyikanLengket === "function") sembunyikanLengket();
     const idx = VIEWS.indexOf(v);
     document.querySelectorAll("#steps li").forEach((li, k) => {
       li.className = k === idx ? "on" : k < idx ? "done" : "";
@@ -90,20 +178,248 @@
     window.scrollTo({ top: 0 });
   }
 
-  /* Profil */
+  /* ---------- Modal helper ---------- */
+  let lastFocus = null;
+  function openModal(id) {
+    lastFocus = document.activeElement;
+    $(id).classList.remove("hidden");
+    document.body.style.overflow = "hidden";
+    const f = $(id).querySelector("button:not([disabled]), input, a");
+    if (f) f.focus();
+  }
+  function closeModal(id) {
+    $(id).classList.add("hidden");
+    document.body.style.overflow = "";
+    if (lastFocus) lastFocus.focus();
+  }
+
+  /* ========== 1. POP-UP SYARAT ========== */
+  const KUNCI_SYARAT = "tmb-syarat-v1";
+  function bacaCacheSyarat() {
+    try { const v = JSON.parse(localStorage.getItem(KUNCI_SYARAT)); return Array.isArray(v) && v.length ? v : null; } catch (e) { return null; }
+  }
+  async function muatSyarat() {
+    if (DEMO) { state.syarat = CFG.SYARAT_DEMO || []; renderSyarat(); return; }
+    /* Tampilkan syarat dari kunjungan sebelumnya dulu supaya pop-up langsung terisi */
+    const cache = bacaCacheSyarat();
+    if (cache) { state.syarat = cache; renderSyarat(); }
+    try {
+      const r = await apiGet({ action: "syarat" });
+      if (!r.ok) throw new Error(r.pesan);
+      const baru = r.syarat || [];
+      try { localStorage.setItem(KUNCI_SYARAT, JSON.stringify(baru)); } catch (e) {}
+      if (JSON.stringify(baru) !== JSON.stringify(state.syarat)) {
+        state.syarat = baru;
+        state.bukti = state.bukti.slice(0, baru.length);
+        renderSyarat();
+      }
+    } catch (e) {
+      if (!cache) {
+        $("syarat-error").textContent = "Syarat gagal dimuat. Periksa koneksi internet lalu muat ulang halaman.";
+        $("syarat-error").classList.remove("hidden");
+        state.syarat = []; renderSyarat();
+      }
+    }
+  }
+
+  function renderSyarat() {
+    const list = $("syarat-list");
+    if (!state.syarat.length) { list.innerHTML = ""; cekSyarat(); return; }
+    list.innerHTML = state.syarat.map((s, i) => {
+      const b = state.bukti[i];
+      return `<li>
+        <div class="s-head"><div class="s-text">${esc(s.teks)}${s.link ? `<br><a href="${esc(s.link)}" target="_blank" rel="noopener">Buka tautan</a>` : ""}</div></div>
+        <label class="drop ${b ? "done" : ""}">
+          <input type="file" accept="image/*" data-i="${i}">
+          <span class="thumb">${b ? `<img src="${b.preview}" alt="">` : "+"}</span>
+          <span>${b ? "Bukti terunggah. Ketuk untuk mengganti." : "Unggah screenshot bukti"}</span>
+        </label>
+      </li>`;
+    }).join("");
+    cekSyarat();
+  }
+
+  function cekSyarat() {
+    const lengkap = state.syarat.every((_, i) => state.bukti[i]);
+    $("syarat-ok").disabled = !lengkap;
+    const n = state.bukti.filter(Boolean).length, total = state.syarat.length;
+    $("bukti-status").classList.toggle("ok", lengkap);
+    $("bukti-text").textContent = lengkap ? `Bukti syarat lengkap (${n}/${total})` : `Bukti syarat: ${n}/${total} terunggah`;
+    $("buka-syarat").textContent = lengkap ? "Ubah" : "Unggah bukti";
+    return lengkap;
+  }
+
+  $("syarat-list").addEventListener("change", async (e) => {
+    const inp = e.target.closest("input[type=file]"); if (!inp || !inp.files[0]) return;
+    const i = +inp.dataset.i, file = inp.files[0];
+    $("syarat-error").classList.add("hidden");
+    if (file.size > 15 * 1024 * 1024) { $("syarat-error").textContent = "Ukuran file maksimal 15 MB."; $("syarat-error").classList.remove("hidden"); return; }
+    try {
+      const hasil = await kompres(file);
+      const kembar = state.bukti.findIndex((b, k) => b && k !== i && b.data === hasil.data);
+      if (kembar > -1) throw new Error(`Screenshot ini sama dengan bukti syarat ${kembar + 1}. Unggah bukti yang berbeda untuk setiap syarat.`);
+      state.bukti[i] = hasil;
+      simpanProgres();
+      renderSyarat();
+    } catch (err) {
+      $("syarat-error").textContent = err.message; $("syarat-error").classList.remove("hidden");
+    }
+  });
+  $("syarat-ok").addEventListener("click", () => { closeModal("m-syarat"); $("nama").focus(); });
+  $("buka-syarat").addEventListener("click", () => { renderSyarat(); openModal("m-syarat"); });
+
+  /* ========== 2. DATA DIRI ========== */
   $("hex-intro").innerHTML = hexSVG({ R: .55, I: .8, A: .45, S: .7, E: .4, C: .6 });
+  $("teks-setuju").textContent = CFG.TEKS_PERSETUJUAN || "";
+
   document.querySelectorAll(".chips[data-key]").forEach((grp) => {
     grp.addEventListener("click", (e) => {
       const b = e.target.closest(".chip"); if (!b) return;
       grp.querySelectorAll(".chip").forEach((x) => x.setAttribute("aria-pressed", String(x === b)));
       state[grp.dataset.key] = b.dataset.v;
-      $("mulai").disabled = !state.jalur;
     });
   });
-  $("nama").addEventListener("input", (e) => { state.nama = e.target.value.trim(); });
-  $("mulai").addEventListener("click", () => { show("tes"); renderQ(); });
 
-  /* Tes */
+  /* Autocomplete sekolah (data dari tab "Sekolah" di Google Sheet) */
+  let sekolahTersedia = !DEMO, timer = null, sugIdx = -1, sugData = [];
+  const inpS = $("sekolah"), listS = $("sekolah-list");
+  function tutupSaran() { listS.classList.add("hidden"); inpS.setAttribute("aria-expanded", "false"); sugIdx = -1; }
+  function pilihSekolah(s) {
+    state.sekolah = s.nama; state.npsn = s.npsn || "";
+    inpS.value = s.nama;
+    $("sekolah-hint").textContent = s.npsn ? `NPSN ${s.npsn}${s.kota ? " · " + s.kota : ""}` : "";
+    tutupSaran();
+  }
+  function renderSaran(q) {
+    const items = sugData.map((s, i) => `<li role="option" id="opt-${i}" data-i="${i}" aria-selected="${i === sugIdx}">${esc(s.nama)}<small>${esc([s.kota, s.prov].filter(Boolean).join(", "))}${s.npsn ? " · NPSN " + esc(s.npsn) : ""}</small></li>`);
+    items.push(`<li role="option" class="manual" data-i="manual" aria-selected="${sugIdx === sugData.length}">Sekolahku tidak ada di daftar, pakai "${esc(q)}"</li>`);
+    listS.innerHTML = items.join("");
+    listS.classList.remove("hidden"); inpS.setAttribute("aria-expanded", "true");
+  }
+  inpS.addEventListener("input", () => {
+    const q = inpS.value.trim();
+    state.sekolah = q; state.npsn = "";
+    $("sekolah-hint").textContent = "";
+    clearTimeout(timer);
+    if (!sekolahTersedia || q.length < 3) { tutupSaran(); return; }
+    timer = setTimeout(async () => {
+      try {
+        const r = await apiGet({ action: "sekolah", q });
+        if (inpS.value.trim() !== q) return;
+        if (!r.tersedia) { sekolahTersedia = false; state.sekolah = q; tutupSaran(); return; }
+        sugData = r.data || []; sugIdx = -1; renderSaran(q);
+      } catch (e) { sekolahTersedia = false; state.sekolah = q; tutupSaran(); }
+    }, 300);
+  });
+  inpS.addEventListener("keydown", (e) => {
+    if (listS.classList.contains("hidden")) return;
+    const max = sugData.length;
+    if (e.key === "ArrowDown") { e.preventDefault(); sugIdx = Math.min(max, sugIdx + 1); renderSaran(inpS.value.trim()); }
+    else if (e.key === "ArrowUp") { e.preventDefault(); sugIdx = Math.max(0, sugIdx - 1); renderSaran(inpS.value.trim()); }
+    else if (e.key === "Enter" && sugIdx > -1) {
+      e.preventDefault();
+      if (sugIdx === max) { state.sekolah = inpS.value.trim(); tutupSaran(); } else pilihSekolah(sugData[sugIdx]);
+    } else if (e.key === "Escape") tutupSaran();
+  });
+  listS.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("li"); if (!li) return;
+    e.preventDefault();
+    if (li.dataset.i === "manual") { state.sekolah = inpS.value.trim(); state.npsn = ""; tutupSaran(); }
+    else pilihSekolah(sugData[+li.dataset.i]);
+  });
+  inpS.addEventListener("blur", () => setTimeout(tutupSaran, 150));
+
+  function tampilError(msg) { const el = $("form-error"); el.textContent = msg; el.classList.toggle("hidden", !msg); }
+
+  $("form-profil").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    state.nama = $("nama").value.trim();
+    state.setuju = $("setuju").checked;
+    /* Nama sekolah yang diketik selalu diterima; memilih dari daftar hanya menambahkan NPSN */
+    const ketikan = inpS.value.trim();
+    if (ketikan !== state.sekolah) { state.sekolah = ketikan; state.npsn = ""; }
+
+    if (!cekSyarat()) { tampilError("Unggah bukti syarat terlebih dahulu."); renderSyarat(); openModal("m-syarat"); return; }
+    if (state.nama.length < 2 || !/[a-zA-Z]{2,}/.test(state.nama)) { tampilError("Isi nama lengkapmu dengan huruf."); $("nama").focus(); return; }
+    if (state.sekolah.length < 3) { tampilError("Isi asal sekolahmu."); inpS.focus(); return; }
+    if (!state.jalur) { tampilError("Pilih rencana jalur masuk."); return; }
+    if (!state.setuju) { tampilError("Centang persetujuan terlebih dahulu."); $("setuju").focus(); return; }
+    tampilError("");
+
+    if (!navigator.onLine) toast("Kamu sedang offline. Tes tetap bisa dikerjakan, datamu akan dikirim otomatis saat online.");
+    /* Data dikirim di latar; peserta langsung mulai tes tanpa menunggu */
+    state.mulai = true; simpanProgres();
+    kirimPendaftaran();
+    show("tes"); renderQ();
+  });
+
+  /* ---------- Pengiriman data di latar (dengan coba ulang otomatis) ---------- */
+  (function buatStatusSimpan() {
+    const box = document.createElement("div");
+    box.id = "simpan-status"; box.className = "note hidden"; box.setAttribute("role", "alert");
+    box.style.cssText = "display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin:0 0 24px;font-weight:600;color:var(--brand);border:1px solid var(--brand-mid)";
+    box.innerHTML = '<span id="simpan-text"></span><button type="button" class="btn ghost" id="simpan-ulang" style="padding:10px 16px">Coba kirim lagi</button>';
+    $("v-hasil").prepend(box);
+  })();
+  let kirimJanji = null;
+  function kirimPendaftaran() {
+    if (DEMO) { kirimJanji = Promise.resolve({ ok: true }); return kirimJanji; }
+    if (state.pesertaId) return (kirimJanji = Promise.resolve({ ok: true, id: state.pesertaId }));
+    if (kirimJanji && !kirimSelesai) return kirimJanji;
+    /* state.idem dibuat sekali dan ikut tersimpan di progres, supaya kiriman yang
+       diulang (retry otomatis, atau setelah halaman di-refresh) tidak membuat baris dobel. */
+    const payload = {
+      action: "daftar", nama: state.nama, sekolah: state.sekolah, npsn: state.npsn, setuju: true,
+      bukti: state.bukti.map((b) => ({ mime: b.mime, data: b.data })), hp: "",
+      idem: state.idem, ref: ambilRef()
+    };
+    kirimSelesai = false;
+    kirimJanji = (async () => {
+      let terakhir = null;
+      for (let coba = 0; coba < 3; coba++) {
+        try {
+          const r = await apiPost(payload);
+          kirimSelesai = true;
+          if (r.ok) {
+            state.pesertaId = r.id;
+            simpanProgres();
+            return r;
+          }
+          return r; /* ditolak server (data tidak valid): tidak perlu dicoba ulang */
+        } catch (e) {
+          terakhir = e;
+          await new Promise((res) => setTimeout(res, 2000 * (coba + 1)));
+        }
+      }
+      kirimSelesai = true;
+      return { ok: false, pesan: "Gagal terhubung ke server.", jaringan: true, err: terakhir };
+    })();
+    return kirimJanji;
+  }
+  let kirimSelesai = true;
+  /* Begitu kembali online, kirim ulang otomatis kalau tadi gagal */
+  window.addEventListener("online", () => {
+    if (!DEMO && state.mulai && !state.pesertaId && kirimSelesai) { kirimJanji = null; kirimPendaftaran(); }
+  });
+
+  async function pastikanTersimpan() {
+    const r = await (kirimJanji || kirimPendaftaran());
+    const el = $("simpan-status");
+    if (r && r.ok) { el.classList.add("hidden"); return; }
+    el.classList.remove("hidden");
+    $("simpan-text").textContent = r && !r.jaringan && r.pesan
+      ? "Data kamu belum tersimpan: " + r.pesan
+      : "Data kamu belum tersimpan karena koneksi bermasalah.";
+  }
+  $("simpan-ulang").addEventListener("click", async () => {
+    const b = $("simpan-ulang");
+    b.disabled = true; b.textContent = "Mengirim…";
+    kirimJanji = null;
+    await kirimPendaftaran(); await pastikanTersimpan();
+    b.disabled = false; b.textContent = "Coba kirim lagi";
+  });
+
+  /* ========== 3. TES (tanpa grafik) ========== */
   function renderQ() {
     const q = R.questions[state.i];
     const answered = state.ans.filter(Boolean).length;
@@ -114,40 +430,60 @@
       `<button type="button" data-v="${v}" aria-pressed="${state.ans[state.i] === v}"><b>${v}</b>${l}</button>`).join("");
     $("back").disabled = state.i === 0;
     $("lihat").classList.toggle("hidden", answered < R.questions.length);
-    $("hex-live").innerHTML = hexSVG(scores());
   }
+  let kunciKetuk = false;
   $("scale").addEventListener("click", (e) => {
-    const b = e.target.closest("button"); if (!b) return;
+    const b = e.target.closest("button"); if (!b || kunciKetuk) return;
+    /* Cegah ketukan ganda yang tanpa sengaja menjawab pertanyaan berikutnya */
+    kunciKetuk = true; setTimeout(() => { kunciKetuk = false; }, 350);
     state.ans[state.i] = +b.dataset.v;
     const next = state.ans.findIndex((a, k) => !a && k > state.i);
     const anyEmpty = state.ans.findIndex((a) => !a);
     if (next > -1) state.i = next; else if (anyEmpty > -1) state.i = anyEmpty;
+    simpanProgres();
     renderQ();
   });
-  $("back").addEventListener("click", () => { if (state.i > 0) { state.i--; renderQ(); } });
-  $("lihat").addEventListener("click", () => { renderResult(); show("hasil"); });
+  $("back").addEventListener("click", () => { if (state.i > 0) { state.i--; simpanProgres(); renderQ(); } });
+  $("lihat").addEventListener("click", async () => {
+    const b = $("lihat");
+    b.disabled = true; b.setAttribute("aria-busy", "true"); b.textContent = "Menyiapkan hasil…";
+    await pastikanTersimpan();
+    b.disabled = false; b.removeAttribute("aria-busy"); b.textContent = "Lihat hasil";
+    if (state.ans.some((a) => !a)) { state.i = state.ans.findIndex((a) => !a); renderQ(); toast("Masih ada pertanyaan yang belum dijawab."); return; }
+    state.selesai = true; simpanProgres();
+    renderResult(); show("hasil");
+  });
 
-  /* Hasil */
+  /* ========== 4. HASIL ========== */
   function holland(sc) { return [...ORDER].sort((a, b) => sc[b] - sc[a]).slice(0, 3); }
   function matchScore(sc, code) {
     const w = [3, 2, 1]; let s = 0;
     code.split("").forEach((t, k) => { s += sc[t] * w[k]; });
     return Math.round(s / 6 * 100);
   }
+  function ranking(sc, filter) {
+    return Object.entries(R.rumpun)
+      .map(([id, r]) => ({ id, ...r, m: matchScore(sc, r.code), s: summary[id] }))
+      .filter((r) => r.s && (filter === "semua" || r.kelompok === filter))
+      .sort((a, b) => b.m - a.m || b.s.nPtn - a.s.nPtn);
+  }
 
   function renderResult() {
     const sc = scores(), code = holland(sc);
-    const who = state.nama ? esc(state.nama) + ", kamu" : "Kamu";
-    $("res-title").innerHTML = `${who} adalah seorang ${R.types[code[0]].id}.`;
+    state.hasil = { sc, code };
+    const panggilan = state.nama ? esc(state.nama.split(" ")[0]) + ", kamu" : "Kamu";
+    $("res-title").innerHTML = `${panggilan} adalah seorang ${R.types[code[0]].id}.`;
     $("res-code").innerHTML = code.map((t) => `<span title="${R.types[t].name}">${t}</span>`).join("");
     $("res-types").innerHTML = code.map((t) =>
       `<div class="type"><h3>${R.types[t].id} <small>(${R.types[t].name}, ${Math.round(sc[t] * 100)}%)</small></h3><p>${R.types[t].desc}</p></div>`).join("");
     $("hex-result").innerHTML = hexSVG(sc);
 
-    const m = D.meta;
     $("jalur-note").innerHTML = state.jalur === "SNBP"
-      ? `Data daya tampung dan peminat di bawah ini adalah data resmi <strong>jalur SNBP</strong> dari SNPMB, diperbarui ${m.diperbarui}.`
+      ? `Data daya tampung dan peminat di bawah ini adalah data resmi <strong>jalur SNBP</strong> dari SNPMB, diperbarui ${D.meta.diperbarui}.`
       : `Rekomendasi jurusan berlaku untuk semua jalur. Data daya tampung dan peminat yang tersedia saat ini adalah <strong>jalur SNBP</strong>; data SNBT sedang kami siapkan. Untuk SNBT, cek daya tampungnya di <a href="https://snpmb.id" target="_blank" rel="noopener">snpmb.id</a>.`;
+
+    renderLangkah(sc);
+    renderAjak();
 
     $("filters").innerHTML = [["semua", "Semua"], ["saintek", "Saintek"], ["soshum", "Soshum"], ["campuran", "Bisa dari semua jurusan"]]
       .map(([v, l]) => `<button class="chip" type="button" data-f="${v}" aria-pressed="${state.filter === v}">${l}</button>`).join("");
@@ -166,25 +502,15 @@
   }
 
   function renderRecs(sc) {
-    const list = Object.entries(R.rumpun)
-      .map(([id, r]) => ({ id, ...r, m: matchScore(sc, r.code), s: summary[id] }))
-      .filter((r) => r.s && (state.filter === "semua" || r.kelompok === state.filter))
-      .sort((a, b) => b.m - a.m || b.s.nPtn - a.s.nPtn)
-      .slice(0, 8);
-
+    const list = ranking(sc, state.filter).slice(0, 8);
     if (!list.length) { $("recs").innerHTML = `<p class="empty">Belum ada rumpun prodi di kelompok ini. Coba pilih filter lain.</p>`; return; }
-
     $("recs").innerHTML = list.map((r) => {
       const all = rows[r.id] || [];
-      const pop = all.filter((x) => x.grup === "P");
-      const alt = all.filter((x) => x.grup === "A");
+      const pop = all.filter((x) => x.grup === "P"), alt = all.filter((x) => x.grup === "A");
       return `<article class="rec">
         <div class="rec-head">
-          <div>
-            <h3>${r.label}</h3>
-            <p class="desc">${r.desc}</p>
-            <div class="tags">${r.code.split("").map((t) => `<span class="tag">${R.types[t].id}</span>`).join("")}</div>
-          </div>
+          <div><h3>${r.label}</h3><p class="desc">${r.desc}</p>
+            <div class="tags">${r.code.split("").map((t) => `<span class="tag">${R.types[t].id}</span>`).join("")}</div></div>
           <div class="match"><b>${r.m}%</b><small>kecocokan</small></div>
         </div>
         <div class="facts">
@@ -198,9 +524,7 @@
           <p class="subhead">Paling diminati</p>
           <p class="subnote">5 prodi dengan peminat SNBP 2025 terbanyak di rumpun ini.</p>
           ${rowsTable(pop)}
-          ${alt.length ? `<p class="subhead">Peluang lebih besar</p>
-          <p class="subnote">Prodi dengan persentase diterima tertinggi di SNBP 2025 (minimal 20 peminat).</p>
-          ${rowsTable(alt)}` : ""}
+          ${alt.length ? `<p class="subhead">Peluang lebih besar</p><p class="subnote">Prodi dengan persentase diterima tertinggi di SNBP 2025 (minimal 20 peminat).</p>${rowsTable(alt)}` : ""}
         </details>
       </article>`;
     }).join("");
@@ -213,13 +537,376 @@
     renderRecs(scores());
   });
   $("ulang").addEventListener("click", () => {
-    state.ans.fill(0); state.i = 0; state.filter = "semua";
+    if (!confirm("Ulangi tes dari awal? Jawabanmu sebelumnya akan dihapus.")) return;
+    state.ans.fill(0); state.i = 0; state.filter = "semua"; state.selesai = false;
+    simpanProgres();
     show("tes"); renderQ();
   });
 
-  /* Footer */
+  /* ========== 4b. LANGKAH SELANJUTNYA (grup, tryout, konsultasi sales) ========== */
+  let pengaturan = bacaJSON(KUNCI_PENGATURAN) || null;
+  const PENGATURAN_DEMO = { grup: { umum: "#demo" }, wa_sales: ["#demo"], link_tryout: "https://app.cerebrum.id", teks_tryout: "Ikut Tryout SNBT 2027 GRATIS" };
+  async function muatPengaturan() {
+    if (DEMO) { pengaturan = PENGATURAN_DEMO; return; }
+    try {
+      const r = await apiGet({ action: "pengaturan" });
+      if (r && r.ok && r.pengaturan) {
+        pengaturan = r.pengaturan; tulisJSON(KUNCI_PENGATURAN, pengaturan);
+        if (state.hasil && !$("v-hasil").classList.contains("hidden")) { renderLangkah(state.hasil.sc); renderAjak(); }
+      }
+    } catch (e) { /* pakai cache terakhir */ }
+  }
+  function hashAngka(s) { let h = 0; for (const ch of String(s)) h = (h * 31 + ch.charCodeAt(0)) >>> 0; return h; }
+
+  (function gayaLangkah() {
+    const st = document.createElement("style");
+    st.textContent = `
+      .langkah{margin:40px 0 0}
+      .langkah h2{font-size:clamp(1.3rem,3vw,1.7rem);font-weight:800;margin:0 0 6px}
+      .langkah-card{display:flex;flex-direction:column;gap:10px;background:var(--surface);border:1px solid var(--line);border-radius:18px;padding:20px}
+      .langkah-card .ikon{width:44px;height:44px;border-radius:12px;display:grid;place-items:center;background:var(--brand);color:var(--on-brand);font-size:1.3rem;flex-shrink:0}
+      .langkah-card h3{font-size:1.1rem;margin:0}
+      .langkah-card p{margin:0;color:var(--muted);font-size:.92rem}
+      .langkah-card .btn{text-decoration:none;text-align:center}
+      .langkah-row{flex-direction:row;flex-wrap:wrap;align-items:center;gap:16px}
+      .langkah-row .isi{flex:1;min-width:220px}
+
+      /* ===== KLIMAKS: 3 aksi utama ===== */
+      .klimaks{position:relative;overflow:hidden;margin:36px 0 0;border-radius:26px;padding:28px 24px 24px;color:#fff;
+        background:linear-gradient(140deg,#A52A2A 0%,#8A1C1C 45%,#5E0F12 100%);box-shadow:0 18px 40px rgba(94,15,18,.28)}
+      .klimaks::before{content:"";position:absolute;inset:0;pointer-events:none;opacity:.18;
+        background-image:radial-gradient(rgba(255,255,255,.9) 1.4px,transparent 1.6px);background-size:18px 18px;
+        -webkit-mask-image:linear-gradient(120deg,#000 0%,transparent 55%);mask-image:linear-gradient(120deg,#000 0%,transparent 55%)}
+      .klimaks > *{position:relative}
+      .klimaks-badge{display:inline-block;background:#F4D58D;color:#3A1A0E;font-weight:800;font-size:.85rem;padding:6px 12px;border-radius:999px;transform:rotate(-2deg)}
+      .klimaks h2{color:#fff;font-size:clamp(1.6rem,4.2vw,2.4rem);font-weight:800;margin:14px 0 6px;line-height:1.12}
+      .klimaks .sub{color:rgba(255,255,255,.85);margin:0 0 20px;max-width:60ch}
+      .ks-list{list-style:none;margin:0;padding:0;display:grid;grid-template-columns:repeat(3,1fr);gap:14px}
+      @media (max-width:860px){.ks-list{grid-template-columns:1fr}}
+      .ks{display:flex;flex-direction:column;gap:12px;background:var(--surface);color:var(--ink);border-radius:18px;padding:18px;border:2px solid transparent}
+      .ks.utama{border-color:#F4D58D;box-shadow:0 0 0 4px rgba(244,213,141,.35)}
+      .ks-top{display:flex;gap:12px;align-items:flex-start}
+      .ks-no{flex-shrink:0;width:34px;height:34px;border-radius:50%;display:grid;place-items:center;font-family:"Montserrat",sans-serif;font-weight:800;background:var(--brand);color:var(--on-brand)}
+      .ks.utama .ks-no{background:#F4D58D;color:#3A1A0E}
+      .ks strong{display:block;font-size:1.05rem;line-height:1.25}
+      .ks span.d{display:block;color:var(--muted);font-size:.88rem;margin-top:3px}
+      .ks-btn{margin-top:auto;display:flex !important;align-items:center;justify-content:center;gap:10px;width:100%;min-height:56px;padding:10px 16px;text-align:center;line-height:1.2;
+        border:0;border-radius:14px;background:var(--brand);color:var(--on-brand) !important;font-weight:800;font-size:1rem;text-decoration:none;cursor:pointer;
+        box-shadow:0 6px 0 #5E0F12;transition:transform .08s ease,box-shadow .08s ease}
+      .ks-btn:active{transform:translateY(4px);box-shadow:0 2px 0 #5E0F12}
+      .ks.utama .ks-btn{background:linear-gradient(135deg,#8A1C1C,#B8402F);animation:ks-denyut 2.2s ease-in-out infinite}
+      @keyframes ks-denyut{0%,100%{box-shadow:0 6px 0 #5E0F12,0 0 0 0 rgba(184,64,47,.55)}60%{box-shadow:0 6px 0 #5E0F12,0 0 0 9px rgba(184,64,47,0)}}
+      @media (prefers-reduced-motion:reduce){.ks.utama .ks-btn{animation:none}}
+      .ks-btn svg{width:22px;height:22px}
+      #slot-story{margin-top:auto}
+      .klimaks .catatan{color:rgba(255,255,255,.8);font-size:.82rem;margin:14px 0 0}
+
+      /* ===== Bilah lengket (HP), muncul setelah melewati klimaks ===== */
+      .cta-lengket{position:fixed;left:0;right:0;bottom:0;z-index:40;display:flex;gap:8px;padding:10px 12px;
+        padding-bottom:calc(10px + env(safe-area-inset-bottom,0px));background:var(--surface);border-top:1px solid var(--line);
+        box-shadow:0 -10px 30px rgba(40,10,10,.12);transform:translateY(110%);transition:transform .25s ease}
+      .cta-lengket.tampil{transform:translateY(0)}
+      .cta-lengket a,.cta-lengket button{flex:1;min-height:50px;border-radius:12px;font-weight:800;font-size:.95rem;display:flex;align-items:center;justify-content:center;gap:6px;text-decoration:none;cursor:pointer}
+      .cta-lengket .a1{background:var(--brand);color:var(--on-brand);border:0}
+      .cta-lengket .a2{background:transparent;color:var(--brand);border:2px solid var(--brand)}
+      @media (min-width:861px){.cta-lengket{left:50%;right:auto;bottom:16px;width:min(560px,92vw);transform:translate(-50%,140%);border-radius:16px;border:1px solid var(--line)}
+        .cta-lengket.tampil{transform:translate(-50%,0)}}`;
+    document.head.appendChild(st);
+  })();
+
+  function hitungLink(sc) {
+    const p = pengaturan || {};
+    const grup = p.grup || {};
+    const atas = ranking(sc, "semua").slice(0, 3);
+    const kelompok = atas[0] ? atas[0].kelompok : "campuran";
+    const linkGrup = grup[kelompok] || grup.umum || grup.saintek || grup.soshum || grup.campuran || "";
+    return { p, atas, kelompok, linkGrup, waLangsung: /chat\.whatsapp\.com/.test(linkGrup) };
+  }
+
+  /* KLIMAKS: Bagikan Story, Gabung grup, Ikut Tryout */
+  function renderKlimaks(sc) {
+    let box = $("klimaks");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "klimaks"; box.className = "klimaks"; box.setAttribute("aria-labelledby", "klimaks-judul");
+      const anchor = $("v-hasil").querySelector(".grid");
+      anchor.parentNode.insertBefore(box, anchor.nextSibling);
+    }
+    /* Ambil referensi tombol Story SEBELUM isi kotak diganti, supaya tidak ikut terhapus */
+    const bs = $("btn-story");
+    const { p, atas, kelompok, linkGrup, waLangsung } = hitungLink(sc);
+    const labelKelompok = { saintek: " Saintek", soshum: " Soshum" }[kelompok] || "";
+    const prodi1 = atas[0] ? atas[0].label : "jurusan impianmu";
+    const panggilan = state.nama ? esc(state.nama.split(" ")[0]) : "kamu";
+    const langkah = [{ id: "story", utama: true, judul: "Pamerin hasilmu", isi: "Bagikan ke Instagram Story & tag @cerebrum.id. Siapa tahu di-repost!" }];
+    if (linkGrup) langkah.push({ id: "grup", judul: `Gabung Grup Pejuang PTN${labelKelompok}`, isi: "Info jadwal SNBP/SNBT, live class & latihan soal gratis bareng teman seperjuangan.",
+      tombol: waLangsung ? "Gabung grup WhatsApp" : "Pilih & gabung grup", ikon: "👥", href: linkGrup });
+    if (p.link_tryout) langkah.push({ id: "tryout", judul: "Ukur peluangmu", isi: `Nilaimu sudah cukup untuk ${prodi1}? Cek lewat tryout, gratis!`,
+      tombol: p.teks_tryout || "Ikut Tryout GRATIS", ikon: "📝", href: p.link_tryout });
+
+    box.innerHTML = `<span class="klimaks-badge">🎉 Hasilmu sudah keluar!</span>
+      <h2 id="klimaks-judul">Jangan berhenti di sini, ${panggilan}!</h2>
+      <p class="sub">${langkah.length > 1 ? `Selesaikan ${langkah.length} langkah ini` : "Satu langkah lagi"} untuk mulai serius kejar <strong>${esc(prodi1)}</strong>.</p>
+      <ol class="ks-list">${langkah.map((l, i) => `<li class="ks${l.utama ? " utama" : ""}">
+        <div class="ks-top"><span class="ks-no">${i + 1}</span><div><strong>${esc(l.judul)}</strong><span class="d">${esc(l.isi)}</span></div></div>
+        ${l.id === "story" ? `<div id="slot-story"></div>` : `<a class="ks-btn" href="${esc(l.href)}" target="_blank" rel="noopener" data-cta="${l.id}"><span aria-hidden="true">${l.ikon}</span> ${esc(l.tombol)}</a>`}
+      </li>`).join("")}</ol>`;
+    /* Pindahkan tombol Story asli (lengkap dengan fungsinya) ke dalam langkah 1 */
+    bs.className = "ks-btn"; bs.style.marginTop = "0";
+    $("slot-story").appendChild(bs);
+    renderLengket(linkGrup, p.link_tryout, p.teks_tryout);
+  }
+
+  /* Bilah lengket di bawah layar, supaya CTA tetap terlihat saat peserta menggulir daftar prodi */
+  let pengamatKlimaks = null;
+  function renderLengket(linkGrup, linkTryout) {
+    let bar = $("cta-lengket");
+    if (!bar) {
+      bar = document.createElement("div"); bar.id = "cta-lengket"; bar.className = "cta-lengket"; bar.setAttribute("aria-label", "Aksi cepat");
+      document.body.appendChild(bar);
+    }
+    const kedua = linkTryout ? { href: linkTryout, teks: "📝 Tryout GRATIS" } : linkGrup ? { href: linkGrup, teks: "👥 Gabung grup" } : null;
+    bar.innerHTML = `<button type="button" class="a1" id="lengket-story">📸 Bagikan Story</button>` +
+      (kedua ? `<a class="a2" href="${esc(kedua.href)}" target="_blank" rel="noopener">${kedua.teks}</a>` : "");
+    $("lengket-story").onclick = () => $("btn-story").click();
+    if (pengamatKlimaks) pengamatKlimaks.disconnect();
+    if ("IntersectionObserver" in window) {
+      pengamatKlimaks = new IntersectionObserver(([en]) => {
+        const lewat = !en.isIntersecting && en.boundingClientRect.top < 0;
+        bar.classList.toggle("tampil", lewat && !$("v-hasil").classList.contains("hidden"));
+      });
+      pengamatKlimaks.observe($("klimaks"));
+    }
+  }
+  function sembunyikanLengket() { const b = $("cta-lengket"); if (b) b.classList.remove("tampil"); }
+
+  /* Langkah tambahan (sekunder): konsultasi dengan Kakak Mentor */
+  function renderLangkah(sc) {
+    let box = $("langkah");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "langkah"; box.className = "langkah";
+      $("v-hasil").insertBefore(box, $("v-hasil").querySelector(".section-title"));
+    }
+    renderKlimaks(sc);
+    const { p, atas } = hitungLink(sc);
+    const sales = Array.isArray(p.wa_sales) ? p.wa_sales : [];
+    /* Peserta yang sama selalu diarahkan ke sales yang sama walau dibagi bergiliran */
+    const nomorSales = sales.length ? sales[hashAngka(state.pesertaId || state.idem || state.nama) % sales.length] : "";
+    const tipe = R.types[state.hasil.code[0]];
+    const duaProdi = atas.slice(0, 2).map((r) => r.label).join(" atau ");
+    const pesan = `Halo Kak, aku ${state.nama || "peserta"}${state.sekolah ? " dari " + state.sekolah : ""}. ` +
+      `Hasil tes minatku ${tipe.id} (${state.hasil.code.join("")}), prodi yang paling cocok: ${atas.map((r) => r.label).join(", ")}. ` +
+      `Rencana jalur: ${state.jalur || "-"}. Aku mau konsultasi strategi pilih jurusan & kampus dong 🙏` + (state.pesertaId ? ` (ID: ${state.pesertaId})` : "");
+    const linkWA = nomorSales ? (nomorSales === "#demo" ? "#demo" : `https://wa.me/${nomorSales}?text=${encodeURIComponent(pesan)}`) : "";
+    if (!linkWA) { box.classList.add("hidden"); return; }
+    box.classList.remove("hidden");
+    const isi = p.teks_konsultasi || `Masih mikir pilih ${duaProdi || "jurusanmu"} yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di ${state.jalur || "SNBP/SNBT"}, sesuai peluang keterimamu. Gratis, 15 menit aja.`;
+    box.innerHTML = `<div class="langkah-card langkah-row">
+        <span class="ikon" aria-hidden="true">💬</span>
+        <div class="isi"><h3>Konsultasi strategi jurusan</h3><p style="margin-top:4px">${esc(isi)}</p></div>
+        <a class="btn ghost" href="${esc(linkWA)}" target="_blank" rel="noopener">Chat Kakak Mentor</a></div>`;
+  }
+  /* Di mode demo, tombol tidak membuka WhatsApp sungguhan */
+  document.addEventListener("click", (e) => {
+    const a = e.target.closest('a[href="#demo"]');
+    if (a) { e.preventDefault(); toast("Mode demo: link akan aktif setelah diisi di tab Pengaturan spreadsheet."); }
+  });
+
+  /* ========== 4c. AJAK TEMAN + LINK REFERRAL ========== */
+  /* Simpan kode pengajak dari link (?ref=...) saat pertama kali dibuka */
+  (function tangkapRef() {
+    const m = location.search.match(/[?&]ref=([^&#]+)/);
+    if (!m) return;
+    const ref = decodeURIComponent(m[1]).toUpperCase().trim();
+    if (!POLA_ID.test(ref)) return;
+    if (!bacaJSON(KUNCI_REF)) tulisJSON(KUNCI_REF, { id: ref, ts: Date.now() });
+  })();
+  function ambilRef() {
+    const r = bacaJSON(KUNCI_REF);
+    return r && POLA_ID.test(r.id) && r.id !== state.pesertaId ? r.id : "";
+  }
+  function linkAjak() {
+    const dasar = (CFG.SITE_URL ? (/^https?:/.test(CFG.SITE_URL) ? CFG.SITE_URL : "https://" + CFG.SITE_URL) : location.origin + location.pathname).replace(/\/$/, "");
+    return state.pesertaId && POLA_ID.test(state.pesertaId) ? `${dasar}/?ref=${state.pesertaId}` : `${dasar}/`;
+  }
+  const EMOJI = { R: "🔧", I: "🔬", A: "🎨", S: "🤝", E: "📣", C: "📊" };
+
+  function renderAjak() {
+    let box = $("ajak");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "ajak"; box.className = "langkah";
+      $("v-hasil").insertBefore(box, $("v-hasil").querySelector(".section-title"));
+    }
+    const kode = state.hasil.code[0];
+    const link = linkAjak();
+    const pesan = `Aku ternyata tipe ${R.types[kode].id} ${EMOJI[kode]} Kamu tipe apa? Cek minat & bakatmu gratis di sini, sekalian tahu jurusan PTN yang cocok: ${link}`;
+    const teks = (pengaturan && pengaturan.teks_referral) || "Biar makin seru, ajak teman sekelasmu cek minat juga, lalu bandingkan hasilnya!";
+    box.innerHTML = `<div class="langkah-card" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:16px">
+        <span class="ikon" aria-hidden="true">🙌</span>
+        <div style="flex:1;min-width:220px"><h3>Ajak teman ikut tes</h3><p style="margin-top:4px">${esc(teks)}</p>
+          <p id="ajak-jumlah" class="hint" style="margin:6px 0 0"></p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a class="btn" id="ajak-wa" href="https://wa.me/?text=${encodeURIComponent(pesan)}" target="_blank" rel="noopener">Bagikan ke WhatsApp</a>
+          <button type="button" class="btn ghost" id="ajak-salin">Salin link</button>
+        </div></div>`;
+    $("ajak-salin").onclick = async () => {
+      try { await navigator.clipboard.writeText(pesan); toast("Link ajakan tersalin. Tempel di grup kelasmu!"); }
+      catch (e) { window.prompt("Salin pesan ini:", pesan); }
+    };
+    if (!DEMO && POLA_ID.test(state.pesertaId || "")) {
+      apiGet({ action: "referral", id: state.pesertaId }).then((r) => {
+        if (r && r.ok && r.jumlah > 0 && $("ajak-jumlah")) $("ajak-jumlah").textContent = `🎉 ${r.jumlah} teman sudah ikut lewat link kamu.`;
+      }).catch(() => {});
+    }
+  }
+
+  /* ========== 5. INSTAGRAM STORY ========== */
+  let storyFile = null, storyUrl = "";
+  $("btn-story").addEventListener("click", async () => {
+    const btn = $("btn-story");
+    btn.disabled = true;
+    const teksAsli = btn.innerHTML;
+    btn.lastChild.textContent = " Menyiapkan gambar…";
+    try {
+      const { sc, code } = state.hasil;
+      const site = (CFG.SITE_URL || location.host || "").replace(/^https?:\/\//, "").replace(/\/$/, "");
+      const blob = await window.buatStory({
+        nama: state.nama.split(" ")[0], code, scores: sc, order: ORDER, types: R.types,
+        top3: ranking(sc, "semua").slice(0, 3).map((r) => ({ label: r.label, m: r.m })),
+        url: site || "cerebrum.id", instagram: CFG.INSTAGRAM || "@cerebrum.id",
+        logoSrc: $("logo").src,
+        tema: CFG.STORY_TEMA
+      });
+      storyFile = new File([blob], "hasil-tes-minat-cerebrum.png", { type: "image/png" });
+      if (storyUrl) URL.revokeObjectURL(storyUrl);
+      storyUrl = URL.createObjectURL(blob);
+      $("story-img").src = storyUrl;
+      const bisaShare = !!(navigator.canShare && navigator.canShare({ files: [storyFile] }));
+      $("story-share").classList.toggle("hidden", !bisaShare);
+      $("story-hint").textContent = DI_APLIKASI
+        ? "Kamu membuka lewat aplikasi (misalnya Instagram). Tekan lama gambar di bawah lalu pilih Simpan. Kalau tidak bisa, ketuk menu ⋯ di pojok kanan atas, pilih Buka di browser, lalu ulangi."
+        : bisaShare
+          ? "Ketuk Bagikan lalu pilih Instagram, atau unduh gambarnya dulu lalu unggah ke Story."
+          : "Unduh gambar ini, lalu unggah ke Instagram Story dari HP-mu.";
+      openModal("m-story");
+    } catch (err) {
+      console.error(err);
+      toast(err && err.message === "FONT_BELUM_SIAP"
+        ? "Tampilan gambar belum siap karena koneksi lambat. Tunggu sebentar lalu ketuk lagi."
+        : "Gambar gagal dibuat. Coba lagi, atau buka di browser Chrome/Safari.");
+    } finally { btn.disabled = false; btn.innerHTML = teksAsli; }
+  });
+  $("story-share").addEventListener("click", async () => {
+    try {
+      await navigator.share({ files: [storyFile], title: "Hasil Tes Minat & Bakat", text: `Hasil tes minat & bakatku bareng Cerebrum ${CFG.INSTAGRAM || ""}` });
+    } catch (e) { /* dibatalkan pengguna */ }
+  });
+  $("story-download").addEventListener("click", () => {
+    if (DI_APLIKASI) toast("Kalau gambar tidak tersimpan, tekan lama gambarnya lalu pilih Simpan.");
+    const a = document.createElement("a");
+    a.href = storyUrl; a.download = storyFile.name;
+    document.body.appendChild(a); a.click(); a.remove();
+  });
+  $("story-close").addEventListener("click", () => closeModal("m-story"));
+  $("m-story").addEventListener("click", (e) => { if (e.target.id === "m-story") closeModal("m-story"); });
+  document.addEventListener("keydown", (e) => { if (e.key === "Escape" && !$("m-story").classList.contains("hidden")) closeModal("m-story"); });
+
+  /* ===== POKA-YOKE 4: progres tersimpan di perangkat, tidak hilang kalau ter-refresh ===== */
+  function bacaJSON(k) { try { return JSON.parse(localStorage.getItem(k)); } catch (e) { return null; } }
+  function tulisJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
+  function hapusProgres() { try { localStorage.removeItem(KUNCI_PROGRES); } catch (e) {} }
+  function simpanProgres() {
+    const data = { ts: Date.now(), nama: state.nama, sekolah: state.sekolah, npsn: state.npsn, jalur: state.jalur, idem: state.idem,
+      pesertaId: state.pesertaId, ans: state.ans, i: state.i, mulai: !!state.mulai, selesai: !!state.selesai,
+      /* bukti hanya disimpan selama belum terkirim */
+      bukti: state.pesertaId ? [] : state.bukti.map((b) => b && { mime: b.mime, data: b.data, preview: b.preview }) };
+    if (!tulisJSON(KUNCI_PROGRES, data)) { data.bukti = []; tulisJSON(KUNCI_PROGRES, data); }
+  }
+
+  /* ===== POKA-YOKE 5: halaman cek kesehatan untuk admin (buka dengan ?cek=1) ===== */
+  async function halamanCek() {
+    closeModal("m-syarat");
+    const baris = [];
+    const tambah = (ok, judul, ket) => baris.push({ ok, judul, ket });
+    tambah(!CONFIG_HILANG, "config.js terbaca", CONFIG_HILANG ? "File config.js hilang atau ada salah ketik (tanda kutip/koma)." : "OK");
+    tambah(!!API && !API_SALAH, "Alamat Apps Script", !API ? "APPS_SCRIPT_URL masih kosong (mode demo)." : API_SALAH ? "Format salah. Harus https://script.google.com/macros/s/…/exec" : "Format benar");
+    tambah(!fileTidakSinkron.length, "Semua file versi " + VERSI, fileTidakSinkron.length ? "Belum diperbarui: " + fileTidakSinkron.map((f) => f + " (" + versiFile[f] + ")").join(", ") + ". Pastikan diupload ke folder yang benar." : "Sinkron");
+    if (API && !API_SALAH) {
+      try {
+        const r = await apiGet({ action: "cek" });
+        if (r && r.versi) {
+          tambah(true, "Backend Google terhubung", "Versi backend " + r.versi);
+          tambah(r.syarat > 0, "Syarat aktif di tab Syarat", r.syarat + " syarat");
+          tambah(true, "Tab Sekolah", r.sekolah > 0 ? r.sekolah + " sekolah (pencarian aktif)" : "Masih kosong (asal sekolah diisi bebas)");
+          tambah(true, "Peserta terdaftar", r.peserta + " baris di tab Peserta");
+          tambah(!!r.folder, "Folder bukti di Drive", r.folder ? "OK" : "Tidak ditemukan. Jalankan fungsi setup lagi.");
+          const pg = r.pengaturan;
+          if (!pg) tambah(false, "Tab Pengaturan", "Belum ada. Tempel Code.gs terbaru, jalankan setup, lalu deploy versi baru.");
+          else {
+            const g = Object.keys(pg.grup || {});
+            tambah(g.length > 0, "Link grup", g.length ? "Terisi: " + g.map((k) => k + " → " + pg.grup[k]).join(", ") : "Belum diisi. Langkah gabung grup tidak muncul.");
+            tambah((pg.wa_sales || []).length > 0, "Nomor WA tim sales", (pg.wa_sales || []).length ? pg.wa_sales.length + " nomor (dibagi bergiliran)" : "Belum diisi. Tombol konsultasi tidak muncul.");
+            tambah(!!pg.link_tryout, "Link tryout", pg.link_tryout || "Belum diisi. Tombol tryout tidak muncul.");
+            tambah(true, "Teks ajakan referral", pg.teks_referral ? pg.teks_referral : "Pakai teks bawaan (kolom teks_referral kosong)");
+            if ((pg.masalah || []).length) tambah(false, "Isian Pengaturan yang salah format", pg.masalah.join("; "));
+          }
+        } else {
+          tambah(false, "Backend Google terhubung", "Terhubung, tapi Code.gs masih versi lama. Deploy versi baru (Manage deployments → Edit → New version).");
+        }
+      } catch (e) {
+        tambah(false, "Backend Google terhubung", "Tidak bisa dihubungi. Cek URL dan pastikan akses Web app = Anyone.");
+      }
+    }
+    const fontOk = window.siapkanFontStory ? await window.siapkanFontStory() : false;
+    tambah(fontOk, "Font gambar Story", fontOk ? "Semua font siap (assets/fonts)" : "Gagal dimuat. Pastikan folder assets/fonts ikut diupload.");
+    tambah(!!(window.localStorage), "Penyimpanan progres di browser", window.localStorage ? "Tersedia" : "Tidak tersedia");
+    const main = document.querySelector("main");
+    main.innerHTML = '<section class="panel" style="max-width:720px;margin:0 auto"><h1 style="font-size:1.6rem;margin:0 0 6px">Cek kesehatan sistem</h1>' +
+      '<p class="muted" style="margin:0 0 18px">Halaman khusus admin. Semua harus ✅ sebelum event dibagikan.</p>' +
+      baris.map((b) => '<div style="display:flex;gap:12px;padding:12px 0;border-top:1px solid var(--line)"><span style="font-size:1.2rem">' + (b.ok ? "✅" : "❌") + '</span><div><strong>' + esc(b.judul) + '</strong><div class="muted" style="margin:2px 0 0">' + esc(b.ket) + '</div></div></div>').join("") +
+      '<p class="hint">Versi web: ' + VERSI + '</p></section>';
+  }
+
+  /* ---------- Footer & mulai ---------- */
   $("src").textContent = `${D.meta.sumber}, jalur ${D.meta.jalur}, diperbarui ${D.meta.diperbarui}. Mencakup ${fmt(D.meta.nasional.prodi)} prodi di ${D.meta.nasional.ptn} PTN dengan total ${fmt(D.meta.nasional.dayaTampung)} kursi.`;
   $("yr").textContent = new Date().getFullYear();
+  if (DEMO) { $("demo-bar").classList.remove("hidden"); $("sekolah-hint").textContent = ""; }
+  if (MASALAH_CONFIG) {
+    const bar = $("demo-bar");
+    bar.textContent = "Perhatian: pengaturan web bermasalah (" + MASALAH_CONFIG + "), jadi data peserta TIDAK tersimpan. Admin, buka halaman ini dengan ?cek=1.";
+    bar.style.background = "#B4442A"; bar.style.color = "#fff";
+  }
+  const vEl = document.createElement("span");
+  vEl.textContent = " · v" + VERSI; vEl.style.opacity = ".6";
+  $("yr").parentNode.appendChild(vEl);
 
-  show("profil");
+  /* Peringatan sebelum menutup halaman di tengah tes */
+  window.addEventListener("beforeunload", (e) => {
+    if (!$("v-tes").classList.contains("hidden") && state.ans.some(Boolean)) { e.preventDefault(); e.returnValue = ""; }
+  });
+
+  if (/[?&]cek=1/.test(location.search)) { halamanCek(); return; }
+  muatPengaturan();
+
+  /* Lanjutkan tes yang belum selesai (misalnya halaman tertutup atau ter-refresh) */
+  const p = bacaJSON(KUNCI_PROGRES);
+  const masihBaru = p && Date.now() - (p.ts || 0) < 24 * 3600 * 1000;
+  if (masihBaru && p.mulai && !p.selesai && Array.isArray(p.ans) && p.ans.length === state.ans.length &&
+      confirm("Kamu punya tes yang belum selesai (" + p.ans.filter(Boolean).length + " dari " + p.ans.length + " terjawab). Lanjutkan?")) {
+    Object.assign(state, { nama: p.nama, sekolah: p.sekolah, npsn: p.npsn, jalur: p.jalur, setuju: true,
+      idem: p.idem || state.idem, pesertaId: p.pesertaId || "", bukti: p.bukti || [], ans: p.ans, i: Math.min(p.i || 0, p.ans.length - 1), mulai: true });
+    if (!state.pesertaId) kirimPendaftaran();
+    show("tes"); renderQ();
+    muatSyarat();
+  } else {
+    if (p && !masihBaru) hapusProgres();
+    show("profil");
+    openModal("m-syarat");
+    muatSyarat();
+  }
+  /* Panaskan font Story di latar supaya tombol Bagikan lebih cepat */
+  if (window.requestIdleCallback) requestIdleCallback(() => { if (window.siapkanFontStory) window.siapkanFontStory(); });
+  else setTimeout(() => { if (window.siapkanFontStory) window.siapkanFontStory(); }, 3000);
 })();

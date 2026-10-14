@@ -4,11 +4,12 @@ Web tes minat berbasis teori RIASEC (Holland Code) yang merekomendasikan rumpun 
 
 ## Fitur
 
-- **Profil singkat**: nama panggilan dan rencana jalur masuk (SNBP / SNBT / belum tahu).
-- **Tes minat 18 pernyataan**: skala 1–5, peta minat berbentuk segi enam terbentuk langsung saat menjawab.
-- **Hasil**: kode Holland tiga huruf beserta penjelasannya.
-- **Rekomendasi prodi**: 46 rumpun prodi diurutkan berdasarkan kecocokan, dengan filter Saintek / Soshum / campuran.
-- **Data persaingan resmi** per rumpun: jumlah PTN, jumlah prodi, total kursi SNBP 2026, 5 prodi paling diminati, dan prodi dengan peluang lebih besar.
+- **Pop-up syarat di awal**: peserta wajib mengunggah screenshot bukti untuk setiap syarat. Daftar syarat diatur dari tab "Syarat" di Google Sheet.
+- **Data diri**: nama, nomor WhatsApp, dan asal sekolah (dengan pencarian dari tab "Sekolah"), plus centang persetujuan. Data dan bukti tersimpan otomatis ke Google Sheet dan Google Drive.
+- **Tes minat 18 pernyataan** dengan skala 1–5. Grafik baru muncul di halaman hasil.
+- **Hasil**: kode Holland tiga huruf, grafik segi enam, dan penjelasan tiap tipe.
+- **Bagikan ke Instagram Story**: gambar 1080×1920 bergaya Cerebrum, bisa langsung dibagikan dari HP atau diunduh.
+- **Rekomendasi prodi**: 46 rumpun prodi diurutkan berdasarkan kecocokan, lengkap dengan data resmi SNBP.
 
 ## Sumber data
 
@@ -27,16 +28,137 @@ Pernyataan tes dan pemetaan rumpun prodi ke kode RIASEC adalah konten editorial 
 ## Struktur
 
 ```
-index.html            Halaman utama
-css/style.css         Tampilan (warna mengikuti logo Cerebrum)
-js/riasec.js          Tipe RIASEC, pernyataan tes, pemetaan rumpun prodi
-js/data-snbp.js       Data resmi SNBP (hasil export dari Centil)
-js/app.js             Logika aplikasi
-assets/               Logo dan favicon Cerebrum
-scripts/export-snbp.sql  Query untuk export ulang data dari Centil
+index.html               Halaman utama
+css/style.css            Tampilan (warna mengikuti logo Cerebrum)
+js/config.js             PENGATURAN: URL Apps Script, Instagram, teks persetujuan
+js/riasec.js             Tipe RIASEC, pernyataan tes, pemetaan rumpun prodi
+js/data-snbp.js          Data resmi SNBP (hasil export dari Centil)
+js/story.js              Pembuat gambar Instagram Story
+js/app.js                Logika aplikasi
+apps-script/Code.gs      Backend Google Sheet (ditempel ke Apps Script, bukan di-deploy ke Vercel)
+assets/                  Logo dan favicon Cerebrum
+scripts/export-snbp.sql  Query untuk export ulang data SNBP dari Centil
 ```
 
-Situs ini statis (HTML, CSS, JS biasa), tanpa build step dan tanpa dependency.
+## Setup Google Sheet (sekali saja)
+
+Lakukan dengan akun Google pemilik spreadsheet.
+
+1. Buka spreadsheet **Tes Minat & Bakat Bareng Cerebrum**.
+2. Klik **Extensions → Apps Script**. Hapus isi editor, lalu tempel seluruh isi `apps-script/Code.gs`. Klik ikon simpan.
+3. Di bagian atas editor, pilih fungsi **setup**, lalu klik **Run**. Saat diminta, klik **Review permissions**, pilih akun, lalu **Allow**. (Jika muncul "Google hasn't verified this app", klik **Advanced → Go to … (unsafe)**. Ini normal untuk script milik sendiri.)
+   Hasilnya: tab **Peserta**, **Syarat**, dan **Sekolah** terbentuk, beserta folder Drive **Bukti Syarat - Tes Minat & Bakat Bareng Cerebrum**.
+4. Klik **Deploy → New deployment**. Klik ikon roda gigi, pilih **Web app**.
+   - Execute as: **Me**
+   - Who has access: **Anyone**
+   Klik **Deploy**, lalu salin **Web app URL** (berakhiran `/exec`).
+5. Buka `js/config.js`, tempel URL tadi ke `APPS_SCRIPT_URL`, lalu commit dan push ke GitHub.
+
+Selama `APPS_SCRIPT_URL` masih kosong, web berjalan dalam **mode demo** (ada label di atas halaman) dan data tidak disimpan.
+
+**Jika `Code.gs` diubah di kemudian hari:** buka **Deploy → Manage deployments → ikon pensil → Version: New version → Deploy**. URL tetap sama.
+
+## Mengelola dari Google Sheet
+
+- **Mengubah syarat:** edit tab **Syarat**. Kolom "Syarat" berisi teks yang tampil, "Link" opsional (misalnya link postingan yang harus di-like), dan "Aktif" diisi `Tidak` untuk menyembunyikan syarat. Perubahan langsung berlaku tanpa deploy ulang. Hanya orang yang punya akses edit ke spreadsheet yang bisa mengubah syarat.
+- **Melihat peserta:** tab **Peserta**. Kolom "Bukti Syarat" berisi link file di Google Drive (hanya bisa dibuka akun pemilik dan yang diberi akses).
+- **Daftar sekolah:** isi tab **Sekolah** (kolom NPSN, Nama Sekolah, Kabupaten/Kota, Provinsi) dari export Centil. Selama tab ini kosong, kolom asal sekolah menjadi isian bebas.
+
+## Klimaks halaman hasil
+
+Tepat di bawah hasil tes, ada blok maroon **"Jangan berhenti di sini!"** berisi 3 langkah bernomor dengan tombol besar:
+1. **Pamerin hasilmu**: Bagikan ke Instagram Story (tombol utama, berdenyut halus)
+2. **Gabung Grup Pejuang PTN**: ke link grup di tab Pengaturan. Boleh link grup WhatsApp langsung atau halaman pilihan grup seperti `https://app.cerebrum.id/link`.
+3. **Ukur peluangmu**: ke link tryout di tab Pengaturan
+
+Saat peserta menggulir ke daftar prodi, muncul **bilah lengket** di bawah layar berisi tombol "Bagikan Story" dan "Tryout GRATIS", supaya ajakan tetap terlihat. Konsultasi dengan Kakak Mentor ditampilkan sebagai ajakan sekunder di bawah blok klimaks.
+
+## Langkah selanjutnya (grup, tryout, konsultasi sales)
+
+Di halaman hasil, peserta melihat 3 tombol:
+
+| Tombol | Mengarah ke | Diatur di |
+|---|---|---|
+| Gabung grup WhatsApp | Grup sesuai rumpun prodi teratas peserta (Saintek/Soshum/Campuran), atau grup umum | tab **Pengaturan**: `grup_umum`, `grup_saintek`, `grup_soshum`, `grup_campuran` |
+| Ikut Tryout SNBT | Aplikasi/web tryout | tab **Pengaturan**: `link_tryout`, `teks_tryout` |
+| Chat Kakak Mentor | WhatsApp tim sales, dengan pesan otomatis berisi nama, sekolah, hasil tes, 3 prodi teratas, jalur, dan ID peserta | tab **Pengaturan**: `wa_sales` (boleh lebih dari satu nomor, pisahkan dengan koma; peserta dibagi bergiliran dan tetap ke sales yang sama) |
+
+Isi kolom **Nilai** saja; kolom **Kunci** jangan diubah. Tombol yang nilainya kosong otomatis disembunyikan. Perubahan berlaku dalam beberapa detik tanpa perlu menyentuh GitHub. Isian yang salah format (misalnya link bukan grup WhatsApp, atau nomor tidak valid) ditandai di halaman `?cek=1`.
+
+## Data diri peserta
+
+Sejak versi 2026.10.13, yang dikumpulkan dari peserta hanya **nama lengkap, asal sekolah, dan rencana jalur masuk**. Nomor WhatsApp tidak lagi diminta di formulir pendaftaran, supaya gesekan untuk mulai tes lebih kecil.
+
+Konsekuensinya: tanpa nomor WA, sistem tidak bisa lagi mendeteksi orang yang sama mendaftar dua kali dari perangkat berbeda (dulu dicegah lewat pencocokan WA). Yang masih dicegah:
+- **Kiriman dobel karena retry jaringan atau refresh halaman di tengah pendaftaran**, lewat kunci sekali-kirim (`idem`) yang dibuat otomatis oleh browser peserta.
+- **Bot**, lewat jebakan poka-yoke yang sudah ada.
+
+Kalau nomor WA peserta tetap dibutuhkan di kemudian hari (misalnya tim sales ingin tahu siapa yang mendaftar tanpa menunggu mereka chat duluan), paling mudah ditambahkan kembali sebagai field opsional, bukan wajib.
+
+## Konsultasi gratis (trigger chat admin)
+
+Kartu "Konsultasi strategi jurusan" di halaman hasil memakai pesan yang konkret, bukan ajakan umum "chat admin" atau "konsultasi" tanpa topik jelas:
+
+> *"Masih mikir pilih [2 prodi teratas hasil tes] yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di [jalur pilihan peserta], sesuai peluang keterimamu. Gratis, 15 menit aja."*
+
+Topiknya spesifik (strategi pilihan 1 vs 2, berdasarkan data keketatan yang sudah dihitung web) supaya peserta tahu persis apa yang akan dibahas, bukan sekadar "tanya-tanya". Teks ini bisa diganti dari tab **Pengaturan**, kunci `teks_konsultasi`, tanpa perlu ubah kode.
+
+## Ajak teman & referral
+
+Di halaman hasil ada bagian **Ajak teman ikut tes** dengan tombol **Bagikan ke WhatsApp** dan **Salin link**. Pesan yang dibagikan berisi tipe minat peserta dan **link referral unik**, misalnya `…vercel.app/?ref=TMB-261009-ABC123`.
+
+- Teman yang mendaftar lewat link itu tercatat di kolom **Referral Dari** pada tab Peserta.
+- Pengajak mendapat tambahan 1 di kolom **Jumlah Referral**. Urutkan kolom ini untuk melihat peserta dengan ajakan terbanyak.
+- Referral hanya dihitung kalau teman benar-benar mendaftar (mengisi data dan mengunggah bukti syarat). Kode palsu, ID yang tidak ada, mengajak diri sendiri, dan nomor WA yang sudah terdaftar tidak dihitung.
+- Teks ajakan (misalnya info hadiah) diatur di tab **Pengaturan**, kunci `teks_referral`.
+- Sebelum memberikan hadiah, sebaiknya tim memverifikasi nomor-nomor yang diajak pemenang, untuk mengantisipasi nomor fiktif.
+
+## Poka-yoke (pencegah kesalahan)
+
+**Sisi peserta**
+- Pertanyaan tidak bisa terlewat: hasil hanya muncul setelah semua pertanyaan terjawab.
+- Ketukan ganda tidak akan menjawab pertanyaan berikutnya tanpa sengaja.
+- Progres tersimpan di perangkat. Kalau halaman ter-refresh atau tertutup, peserta ditawari melanjutkan tes (berlaku 24 jam).
+- Muncul peringatan kalau peserta menutup halaman di tengah tes.
+- Screenshot bukti yang sama untuk dua syarat berbeda akan ditolak.
+- Nama wajib berisi huruf, nomor WA divalidasi dan dirapikan ke format 62xxx.
+- Data dikirim di latar dengan coba ulang otomatis, dan dikirim ulang begitu HP kembali online. Kalau tetap gagal, ada tombol "Coba kirim lagi" di halaman hasil.
+- Saat dibuka dari browser bawaan Instagram/TikTok, peserta diberi petunjuk cara menyimpan gambar Story.
+- Font gambar Story disimpan di `assets/fonts` (bukan dari Google Fonts) dan gambar baru dibuat setelah font dipastikan siap. Hasilnya selalu identik di semua HP, browser bawaan Instagram, maupun sinyal lemah.
+
+**Sisi admin dan pengelolaan**
+- Kalau ada file yang hilang atau rusak, peserta melihat pesan "Sedang ada gangguan" beserta kode untuk admin, bukan layar kosong.
+- Kalau `config.js` salah ketik atau `APPS_SCRIPT_URL` salah format, muncul bilah merah peringatan bahwa data tidak tersimpan.
+- Kalau `riasec.js` diedit dan ada tipe minat tanpa pertanyaan (atau huruf tipe salah), web menolak berjalan dan menunjukkan letak kesalahannya.
+- Setiap file punya penanda versi. Halaman cek kesehatan memberi tahu file mana yang belum diperbarui atau salah folder.
+
+**Sisi server (Code.gs)**
+- Nomor WA yang sama tidak membuat baris baru (anti data dobel), termasuk kiriman yang bersamaan.
+- Data ditulis berdasarkan nama kolom, jadi aman walaupun urutan kolom di tab Peserta diubah atau kolom baru ditambahkan.
+- Baris judul di setiap tab diberi peringatan saat ada yang mencoba mengubahnya.
+- Link syarat tanpa `https://` dilengkapi otomatis.
+- Teks yang diawali `=`, `+`, `-`, `@` diamankan supaya tidak terbaca sebagai rumus.
+- Ada jebakan sederhana untuk menolak kiriman bot.
+- Daftar syarat disimpan sementara (cache) supaya cepat, dan otomatis diperbarui begitu tab Syarat diedit.
+
+## Cek kesehatan sistem (wajib sebelum event dibagikan)
+
+Buka alamat situs dengan tambahan `?cek=1`, misalnya:
+
+```
+https://tes-minat-bakat-bareng-cerebrum.vercel.app/?cek=1
+```
+
+Semua baris harus ✅. Kalau ada ❌, keterangannya menjelaskan apa yang perlu diperbaiki.
+
+## Cara update yang aman
+
+1. Di GitHub, masuk ke folder tempat `index.html` situs berada (folder yang dipakai sebagai Root Directory di Vercel).
+2. **Add file → Upload files**, lalu drag **isi** folder update (bukan foldernya). Folder `js` dan lainnya akan digabung otomatis.
+3. **Jangan upload `config.js`** kecuali memang ingin mengubah pengaturan, karena file itu berisi URL Apps Script.
+4. Commit, tunggu Vercel selesai, lalu buka `?cek=1` dan pastikan "Semua file versi …" sudah ✅.
+
+**Kalau `Code.gs` diperbarui:** di editor Apps Script buka **Deploy → Manage deployments → ikon pensil → Version: New version → Deploy**. **Jangan pilih "New deployment"**, karena itu membuat URL baru dan web akan terputus dari spreadsheet.
 
 ## Menjalankan di komputer
 
