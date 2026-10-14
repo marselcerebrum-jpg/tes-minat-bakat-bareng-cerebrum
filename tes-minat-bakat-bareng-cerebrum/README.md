@@ -76,6 +76,34 @@ Di halaman hasil, peserta melihat 3 tombol:
 
 Isi kolom **Nilai** saja; kolom **Kunci** jangan diubah. Tombol yang nilainya kosong otomatis disembunyikan. Perubahan berlaku dalam beberapa detik tanpa perlu menyentuh GitHub. Isian yang salah format (misalnya link bukan grup WhatsApp, atau nomor tidak valid) ditandai di halaman `?cek=1`.
 
+## Data diri peserta
+
+Sejak versi 2026.10.13, yang dikumpulkan dari peserta hanya **nama lengkap, asal sekolah, dan rencana jalur masuk**. Nomor WhatsApp tidak lagi diminta di formulir pendaftaran, supaya gesekan untuk mulai tes lebih kecil.
+
+Konsekuensinya: tanpa nomor WA, sistem tidak bisa lagi mendeteksi orang yang sama mendaftar dua kali dari perangkat berbeda (dulu dicegah lewat pencocokan WA). Yang masih dicegah:
+- **Kiriman dobel karena retry jaringan atau refresh halaman di tengah pendaftaran**, lewat kunci sekali-kirim (`idem`) yang dibuat otomatis oleh browser peserta.
+- **Bot**, lewat jebakan poka-yoke yang sudah ada.
+
+Kalau nomor WA peserta tetap dibutuhkan di kemudian hari (misalnya tim sales ingin tahu siapa yang mendaftar tanpa menunggu mereka chat duluan), paling mudah ditambahkan kembali sebagai field opsional, bukan wajib.
+
+## Konsultasi gratis (trigger chat admin)
+
+Kartu "Konsultasi strategi jurusan" di halaman hasil memakai pesan yang konkret, bukan ajakan umum "chat admin" atau "konsultasi" tanpa topik jelas:
+
+> *"Masih mikir pilih [2 prodi teratas hasil tes] yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di [jalur pilihan peserta], sesuai peluang keterimamu. Gratis, 15 menit aja."*
+
+Topiknya spesifik (strategi pilihan 1 vs 2, berdasarkan data keketatan yang sudah dihitung web) supaya peserta tahu persis apa yang akan dibahas, bukan sekadar "tanya-tanya". Teks ini bisa diganti dari tab **Pengaturan**, kunci `teks_konsultasi`, tanpa perlu ubah kode.
+
+## Ajak teman & referral
+
+Di halaman hasil ada bagian **Ajak teman ikut tes** dengan tombol **Bagikan ke WhatsApp** dan **Salin link**. Pesan yang dibagikan berisi tipe minat peserta dan **link referral unik**, misalnya `…vercel.app/?ref=TMB-261009-ABC123`.
+
+- Teman yang mendaftar lewat link itu tercatat di kolom **Referral Dari** pada tab Peserta.
+- Pengajak mendapat tambahan 1 di kolom **Jumlah Referral**. Urutkan kolom ini untuk melihat peserta dengan ajakan terbanyak.
+- Referral hanya dihitung kalau teman benar-benar mendaftar (mengisi data dan mengunggah bukti syarat). Kode palsu, ID yang tidak ada, mengajak diri sendiri, dan nomor WA yang sudah terdaftar tidak dihitung.
+- Teks ajakan (misalnya info hadiah) diatur di tab **Pengaturan**, kunci `teks_referral`.
+- Sebelum memberikan hadiah, sebaiknya tim memverifikasi nomor-nomor yang diajak pemenang, untuk mengantisipasi nomor fiktif.
+
 ## Poka-yoke (pencegah kesalahan)
 
 **Sisi peserta**

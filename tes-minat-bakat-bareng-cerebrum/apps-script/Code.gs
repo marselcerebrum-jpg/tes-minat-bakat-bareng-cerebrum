@@ -14,7 +14,7 @@
  *   Sekolah : daftar sekolah untuk pilihan "Asal sekolah" (diisi dari export Centil)
  */
 
-var VERSI_BACKEND = '2026.10.10';
+var VERSI_BACKEND = '2026.10.13';
 var SHEET_PESERTA = 'Peserta';
 var SHEET_SYARAT = 'Syarat';
 var SHEET_SEKOLAH = 'Sekolah';
@@ -34,8 +34,11 @@ var ISI_PENGATURAN = [
   ['grup_campuran', '', 'Link grup WhatsApp untuk rumpun campuran, misalnya Psikologi, DKV, Pendidikan (opsional)'],
   ['wa_sales', '', 'Nomor WhatsApp tim sales untuk tombol konsultasi. Lebih dari satu? Pisahkan dengan koma. Peserta dibagi bergiliran secara otomatis.'],
   ['link_tryout', 'https://app.cerebrum.id', 'Link aplikasi atau web untuk tombol Tryout SNBT'],
-  ['teks_tryout', 'Ikut Tryout SNBT 2027 GRATIS', 'Teks tombol tryout']
+  ['teks_tryout', 'Ikut Tryout SNBT 2027 GRATIS', 'Teks tombol tryout'],
+  ['teks_referral', '', 'Teks ajakan di bagian "Ajak teman" pada halaman hasil, misalnya info hadiah referral. Kosongkan untuk teks bawaan.'],
+  ['teks_konsultasi', '', 'Teks ajakan di kartu "Konsultasi gratis". Kosongkan untuk teks bawaan.']
 ];
+var POLA_ID = /^TMB-\d{6}-[A-Z0-9]{6}$/;
 
 /* ---------- Setup (jalankan sekali) ---------- */
 function setup() {
@@ -86,6 +89,7 @@ function doGet(e) {
     if (action === 'syarat') return json_({ ok: true, syarat: getSyarat_() });
     if (action === 'cek') return json_(cek_());
     if (action === 'pengaturan') return json_({ ok: true, pengaturan: getPengaturan_() });
+    if (action === 'referral') return json_(jumlahReferral_(String(e.parameter.id || '').toUpperCase()));
     if (action === 'sekolah') return json_(cariSekolah_(e.parameter.q || ''));
     return json_({ ok: true, pesan: 'Backend Tes Minat & Bakat Bareng Cerebrum aktif.' });
   } catch (err) {
@@ -141,6 +145,10 @@ function getPengaturan_() {
         out.link_tryout = /^https?:\/\//.test(v) ? v : 'https://' + v;
       } else if (k === 'teks_tryout') {
         out.teks_tryout = v.slice(0, 60);
+      } else if (k === 'teks_referral') {
+        out.teks_referral = v.slice(0, 200);
+      } else if (k === 'teks_konsultasi') {
+        out.teks_konsultasi = v.slice(0, 200);
       }
     });
   }
@@ -180,20 +188,23 @@ function doPost(e) {
     var d = JSON.parse(e.postData.contents);
     if (d.action !== 'daftar') return json_({ ok: false, pesan: 'Aksi tidak dikenal.' });
 
-    var nama = String(d.nama || '').trim();
-    var wa = normalisasiWA_(d.wa);
-    var sekolah = String(d.sekolah || '').trim();
-    if (nama.length < 2 || nama.length > 60) return json_({ ok: false, pesan: 'Nama tidak valid.' });
-    if (!wa) return json_({ ok: false, pesan: 'Nomor WhatsApp tidak valid.' });
-    if (!sekolah) return json_({ ok: false, pesan: 'Asal sekolah wajib diisi.' });
-    if (d.setuju !== true) return json_({ ok: false, pesan: 'Persetujuan wajib dicentang.' });
-
     /* Poka-yoke anti-bot: kolom jebakan harus kosong */
     if (d.hp) return json_({ ok: true, id: 'TMB-X' });
 
-    /* Poka-yoke anti-dobel: nomor WA yang sama tidak dibuat baris baru */
-    var lama = cariPeserta_(wa);
-    if (lama) return json_({ ok: true, id: lama, duplikat: true });
+    /* Poka-yoke anti-dobel: kunci sekali-kirim dari browser peserta. Mencegah baris
+       dobel kalau koneksi gagal lalu web mencoba kirim ulang otomatis. */
+    var idem = String(d.idem || '').slice(0, 64);
+    var cache = CacheService.getScriptCache();
+    if (idem) {
+      var sudah = cache.get('idem_' + idem);
+      if (sudah) return json_({ ok: true, id: sudah, duplikat: true });
+    }
+
+    var nama = String(d.nama || '').trim();
+    var sekolah = String(d.sekolah || '').trim();
+    if (nama.length < 2 || nama.length > 60) return json_({ ok: false, pesan: 'Nama tidak valid.' });
+    if (!sekolah) return json_({ ok: false, pesan: 'Asal sekolah wajib diisi.' });
+    if (d.setuju !== true) return json_({ ok: false, pesan: 'Persetujuan wajib dicentang.' });
 
     var files = Array.isArray(d.bukti) ? d.bukti : [];
     var jumlahSyarat = getSyarat_().length;
@@ -211,18 +222,30 @@ function doPost(e) {
     });
 
     lock.waitLock(20000);
-    var dobel = cariPeserta_(wa);   /* cek ulang di dalam kunci, untuk kiriman yang bersamaan */
-    if (dobel) return json_({ ok: true, id: dobel, duplikat: true });
+    if (idem) {   /* cek ulang di dalam kunci, untuk kiriman yang bersamaan */
+      var sudah2 = cache.get('idem_' + idem);
+      if (sudah2) return json_({ ok: true, id: sudah2, duplikat: true });
+    }
+    /* Referral: hanya dihitung bila ID pengajak valid dan benar-benar ada */
+    var ref = String(d.ref || '').toUpperCase().trim();
+    var barisPengajak = 0;
+    if (POLA_ID.test(ref) && ref !== id) {
+      var pj = cariBarisById_(ref);
+      if (pj) barisPengajak = pj.baris; else ref = '';
+    } else ref = '';
+
     tulisBaris_({
+      'Referral Dari': ref,
       'Waktu Daftar': Utilities.formatDate(new Date(), TZ, 'yyyy-MM-dd HH:mm:ss'),
       'ID Peserta': id,
       'Nama': aman_(nama),
-      'WhatsApp': wa,
       'Asal Sekolah': aman_(sekolah),
       'NPSN': aman_(String(d.npsn || '')),
       'Persetujuan': 'Ya',
       'Bukti Syarat': links.join('\n')
     });
+    if (idem) cache.put('idem_' + idem, id, 21600);
+    if (barisPengajak) tambahReferral_(barisPengajak);
     return json_({ ok: true, id: id });
   } catch (err) {
     return json_({ ok: false, pesan: 'Gagal menyimpan: ' + err.message });
@@ -244,16 +267,38 @@ function tulisBaris_(obj) {
   sh.appendRow(row);
 }
 
-function cariPeserta_(wa) {
-  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA);
-  if (!sh || sh.getLastRow() < 2) return '';
-  var header = sh.getRange(1, 1, 1, sh.getLastColumn()).getValues()[0].map(String);
-  var cWa = header.indexOf('WhatsApp'), cId = header.indexOf('ID Peserta');
-  if (cWa < 0 || cId < 0) return '';
-  var data = sh.getRange(2, 1, sh.getLastRow() - 1, sh.getLastColumn()).getDisplayValues();
-  for (var i = data.length - 1; i >= 0; i--) if (String(data[i][cWa]).replace(/\D/g, '') === wa) return data[i][cId];
-  return '';
+function headerPeserta_(sh) {
+  return sh.getRange(1, 1, 1, Math.max(1, sh.getLastColumn())).getValues()[0].map(String);
 }
+
+function cariBarisById_(idCari) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA);
+  if (!sh || sh.getLastRow() < 2) return null;
+  var h = headerPeserta_(sh), cId = h.indexOf('ID Peserta');
+  if (cId < 0) return null;
+  var data = sh.getRange(2, 1, sh.getLastRow() - 1, h.length).getDisplayValues();
+  for (var i = 0; i < data.length; i++) if (data[i][cId] === idCari) return { baris: i + 2 };
+  return null;
+}
+
+/* Tambah 1 di kolom "Jumlah Referral" milik pengajak (kolom dibuat otomatis bila belum ada) */
+function tambahReferral_(baris) {
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA);
+  var h = headerPeserta_(sh), c = h.indexOf('Jumlah Referral');
+  if (c < 0) { c = h.length; sh.getRange(1, c + 1).setValue('Jumlah Referral').setFontWeight('bold'); }
+  var sel = sh.getRange(baris, c + 1);
+  sel.setValue((Number(sel.getValue()) || 0) + 1);
+}
+
+function jumlahReferral_(idCari) {
+  if (!POLA_ID.test(idCari)) return { ok: false, jumlah: 0 };
+  var r = cariBarisById_(idCari);
+  if (!r) return { ok: true, jumlah: 0 };
+  var sh = SpreadsheetApp.getActive().getSheetByName(SHEET_PESERTA);
+  var c = headerPeserta_(sh).indexOf('Jumlah Referral');
+  return { ok: true, jumlah: c < 0 ? 0 : (Number(sh.getRange(r.baris, c + 1).getValue()) || 0) };
+}
+
 function normalisasiWA_(v) {
   var s = String(v || '').replace(/[^\d+]/g, '');
   if (s.indexOf('+') === 0) s = s.slice(1);

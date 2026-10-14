@@ -1,7 +1,7 @@
 (function () {
   "use strict";
 
-  const VERSI = "2026.10.11";
+  const VERSI = "2026.10.13";
   const $ = (id) => document.getElementById(id);
 
   /* ===== POKA-YOKE 1: file wajib harus terbaca, kalau tidak tampilkan pesan jelas ===== */
@@ -102,13 +102,6 @@
     else { label = "Peluang lebih besar"; cls = "k-low"; }
     return { text: "1 : " + (ratio < 10 ? ratio.toFixed(1).replace(".", ",") : Math.round(ratio)), sub: label + " (" + pct.toFixed(1).replace(".", ",") + "% diterima)", cls };
   }
-  function normalisasiWA(v) {
-    let s = String(v || "").replace(/[^\d+]/g, "");
-    if (s.startsWith("+")) s = s.slice(1);
-    if (s.startsWith("0")) s = "62" + s.slice(1);
-    if (s.startsWith("8")) s = "62" + s;
-    return /^628\d{7,12}$/.test(s) ? s : "";
-  }
   async function apiGet(params) {
     const url = API + (API.includes("?") ? "&" : "?") + new URLSearchParams(params).toString();
     const res = await fetch(url, { method: "GET" });
@@ -138,12 +131,14 @@
     });
   }
 
-  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_TERDAFTAR = "tmb-terdaftar-v1", KUNCI_PENGATURAN = "tmb-pengaturan-v1";
+  const KUNCI_PROGRES = "tmb-progres-v1", KUNCI_PENGATURAN = "tmb-pengaturan-v1", KUNCI_REF = "tmb-ref-v1";
+  const POLA_ID = /^TMB-\d{6}-[A-Z0-9]{6}$/;
+  const idAcak = () => (window.crypto && crypto.randomUUID ? crypto.randomUUID() : Date.now() + "-" + Math.random().toString(16).slice(2));
 
   /* ---------- State ---------- */
   const state = {
-    nama: "", wa: "", sekolah: "", npsn: "", jalur: "", setuju: false,
-    syarat: [], bukti: [], pesertaId: "",
+    nama: "", sekolah: "", npsn: "", jalur: "", setuju: false,
+    syarat: [], bukti: [], pesertaId: "", idem: idAcak(),
     i: 0, ans: Array(R.questions.length).fill(0), filter: "semua", hasil: null
   };
 
@@ -338,7 +333,6 @@
   $("form-profil").addEventListener("submit", async (e) => {
     e.preventDefault();
     state.nama = $("nama").value.trim();
-    state.wa = normalisasiWA($("wa").value);
     state.setuju = $("setuju").checked;
     /* Nama sekolah yang diketik selalu diterima; memilih dari daftar hanya menambahkan NPSN */
     const ketikan = inpS.value.trim();
@@ -346,7 +340,6 @@
 
     if (!cekSyarat()) { tampilError("Unggah bukti syarat terlebih dahulu."); renderSyarat(); openModal("m-syarat"); return; }
     if (state.nama.length < 2 || !/[a-zA-Z]{2,}/.test(state.nama)) { tampilError("Isi nama lengkapmu dengan huruf."); $("nama").focus(); return; }
-    if (!state.wa) { tampilError("Nomor WhatsApp belum benar. Contoh: 081234567890."); $("wa").focus(); return; }
     if (state.sekolah.length < 3) { tampilError("Isi asal sekolahmu."); inpS.focus(); return; }
     if (!state.jalur) { tampilError("Pilih rencana jalur masuk."); return; }
     if (!state.setuju) { tampilError("Centang persetujuan terlebih dahulu."); $("setuju").focus(); return; }
@@ -371,13 +364,13 @@
   function kirimPendaftaran() {
     if (DEMO) { kirimJanji = Promise.resolve({ ok: true }); return kirimJanji; }
     if (state.pesertaId) return (kirimJanji = Promise.resolve({ ok: true, id: state.pesertaId }));
-    /* Nomor WA yang sama sudah pernah terdaftar dari perangkat ini: jangan kirim dobel */
-    const lama = bacaJSON(KUNCI_TERDAFTAR);
-    if (lama && lama.wa === state.wa && lama.id) { state.pesertaId = lama.id; return (kirimJanji = Promise.resolve({ ok: true, id: lama.id })); }
     if (kirimJanji && !kirimSelesai) return kirimJanji;
+    /* state.idem dibuat sekali dan ikut tersimpan di progres, supaya kiriman yang
+       diulang (retry otomatis, atau setelah halaman di-refresh) tidak membuat baris dobel. */
     const payload = {
-      action: "daftar", nama: state.nama, wa: state.wa, sekolah: state.sekolah, npsn: state.npsn, setuju: true,
-      bukti: state.bukti.map((b) => ({ mime: b.mime, data: b.data })), hp: ""
+      action: "daftar", nama: state.nama, sekolah: state.sekolah, npsn: state.npsn, setuju: true,
+      bukti: state.bukti.map((b) => ({ mime: b.mime, data: b.data })), hp: "",
+      idem: state.idem, ref: ambilRef()
     };
     kirimSelesai = false;
     kirimJanji = (async () => {
@@ -388,7 +381,6 @@
           kirimSelesai = true;
           if (r.ok) {
             state.pesertaId = r.id;
-            tulisJSON(KUNCI_TERDAFTAR, { wa: state.wa, id: r.id });
             simpanProgres();
             return r;
           }
@@ -490,6 +482,7 @@
       : `Rekomendasi jurusan berlaku untuk semua jalur. Data daya tampung dan peminat yang tersedia saat ini adalah <strong>jalur SNBP</strong>; data SNBT sedang kami siapkan. Untuk SNBT, cek daya tampungnya di <a href="https://snpmb.id" target="_blank" rel="noopener">snpmb.id</a>.`;
 
     renderLangkah(sc);
+    renderAjak();
 
     $("filters").innerHTML = [["semua", "Semua"], ["saintek", "Saintek"], ["soshum", "Soshum"], ["campuran", "Bisa dari semua jurusan"]]
       .map(([v, l]) => `<button class="chip" type="button" data-f="${v}" aria-pressed="${state.filter === v}">${l}</button>`).join("");
@@ -558,7 +551,7 @@
       const r = await apiGet({ action: "pengaturan" });
       if (r && r.ok && r.pengaturan) {
         pengaturan = r.pengaturan; tulisJSON(KUNCI_PENGATURAN, pengaturan);
-        if (state.hasil && !$("v-hasil").classList.contains("hidden")) renderLangkah(state.hasil.sc);
+        if (state.hasil && !$("v-hasil").classList.contains("hidden")) { renderLangkah(state.hasil.sc); renderAjak(); }
       }
     } catch (e) { /* pakai cache terakhir */ }
   }
@@ -595,11 +588,13 @@
     const linkGrup = grup[kelompok] || grup.umum || grup.saintek || grup.soshum || grup.campuran || "";
     const labelKelompok = { saintek: "Saintek", soshum: "Soshum", campuran: "" }[kelompok] || "";
     const sales = Array.isArray(p.wa_sales) ? p.wa_sales : [];
-    const nomorSales = sales.length ? sales[hashAngka(state.wa || state.nama) % sales.length] : "";
+    /* Peserta yang sama (idem) selalu diarahkan ke sales yang sama walau dibagi bergiliran */
+    const nomorSales = sales.length ? sales[hashAngka(state.pesertaId || state.idem || state.nama) % sales.length] : "";
     const tipe = R.types[state.hasil.code[0]];
+    const duaProdi = atas.slice(0, 2).map((r) => r.label).join(" atau ");
     const pesan = `Halo Kak, aku ${state.nama || "peserta"}${state.sekolah ? " dari " + state.sekolah : ""}. ` +
       `Hasil tes minatku ${tipe.id} (${state.hasil.code.join("")}), prodi yang paling cocok: ${atas.map((r) => r.label).join(", ")}. ` +
-      `Rencana jalur: ${state.jalur || "-"}. Aku mau konsultasi persiapan masuk PTN dong 🙏` + (state.pesertaId ? ` (ID: ${state.pesertaId})` : "");
+      `Rencana jalur: ${state.jalur || "-"}. Aku mau konsultasi strategi pilih jurusan & kampus dong 🙏` + (state.pesertaId ? ` (ID: ${state.pesertaId})` : "");
     const linkWA = nomorSales ? (nomorSales === "#demo" ? "#demo" : `https://wa.me/${nomorSales}?text=${encodeURIComponent(pesan)}`) : "";
 
     const kartu = [];
@@ -607,8 +602,9 @@
       isi: "Dapat info jurusan, jadwal SNBP/SNBT, live class, dan latihan soal gratis bareng teman seperjuangan.", tombol: "Gabung grup WhatsApp", href: linkGrup });
     if (p.link_tryout) kartu.push({ ikon: "📝", judul: "Ukur peluangmu",
       isi: `Kamu sudah tahu jurusannya. Sekarang cek, nilaimu sudah cukup untuk ${atas[0] ? atas[0].label : "jurusan impianmu"} belum?`, tombol: p.teks_tryout || "Ikut Tryout SNBT GRATIS", href: p.link_tryout });
-    if (linkWA) kartu.push({ ikon: "💬", judul: "Konsultasi gratis",
-      isi: "Bingung strategi pilih jurusan dan kampus? Ngobrol langsung dengan Kakak Mentor Cerebrum.", tombol: "Chat Kakak Mentor", href: linkWA });
+    if (linkWA) kartu.push({ ikon: "💬", judul: "Konsultasi strategi jurusan",
+      isi: (p.teks_konsultasi || `Masih mikir pilih ${duaProdi || "jurusanmu"} yang mana? Kakak Mentor bisa bantu susun strategi pilihan 1 & 2 di ${state.jalur || "SNBP/SNBT"}, sesuai peluang keterimamu. Gratis, 15 menit aja.`),
+      tombol: "Chat Kakak Mentor", href: linkWA });
 
     if (!kartu.length) { box.classList.add("hidden"); return; }
     box.classList.remove("hidden");
@@ -622,6 +618,55 @@
     const a = e.target.closest('a[href="#demo"]');
     if (a) { e.preventDefault(); toast("Mode demo: link akan aktif setelah diisi di tab Pengaturan spreadsheet."); }
   });
+
+  /* ========== 4c. AJAK TEMAN + LINK REFERRAL ========== */
+  /* Simpan kode pengajak dari link (?ref=...) saat pertama kali dibuka */
+  (function tangkapRef() {
+    const m = location.search.match(/[?&]ref=([^&#]+)/);
+    if (!m) return;
+    const ref = decodeURIComponent(m[1]).toUpperCase().trim();
+    if (!POLA_ID.test(ref)) return;
+    if (!bacaJSON(KUNCI_REF)) tulisJSON(KUNCI_REF, { id: ref, ts: Date.now() });
+  })();
+  function ambilRef() {
+    const r = bacaJSON(KUNCI_REF);
+    return r && POLA_ID.test(r.id) && r.id !== state.pesertaId ? r.id : "";
+  }
+  function linkAjak() {
+    const dasar = (CFG.SITE_URL ? (/^https?:/.test(CFG.SITE_URL) ? CFG.SITE_URL : "https://" + CFG.SITE_URL) : location.origin + location.pathname).replace(/\/$/, "");
+    return state.pesertaId && POLA_ID.test(state.pesertaId) ? `${dasar}/?ref=${state.pesertaId}` : `${dasar}/`;
+  }
+  const EMOJI = { R: "🔧", I: "🔬", A: "🎨", S: "🤝", E: "📣", C: "📊" };
+
+  function renderAjak() {
+    let box = $("ajak");
+    if (!box) {
+      box = document.createElement("section");
+      box.id = "ajak"; box.className = "langkah";
+      $("v-hasil").insertBefore(box, $("v-hasil").querySelector(".section-title"));
+    }
+    const kode = state.hasil.code[0];
+    const link = linkAjak();
+    const pesan = `Aku ternyata tipe ${R.types[kode].id} ${EMOJI[kode]} Kamu tipe apa? Cek minat & bakatmu gratis di sini, sekalian tahu jurusan PTN yang cocok: ${link}`;
+    const teks = (pengaturan && pengaturan.teks_referral) || "Biar makin seru, ajak teman sekelasmu cek minat juga, lalu bandingkan hasilnya!";
+    box.innerHTML = `<div class="langkah-card" style="flex-direction:row;flex-wrap:wrap;align-items:center;gap:16px">
+        <span class="ikon" aria-hidden="true">🙌</span>
+        <div style="flex:1;min-width:220px"><h3>Ajak teman ikut tes</h3><p style="margin-top:4px">${esc(teks)}</p>
+          <p id="ajak-jumlah" class="hint" style="margin:6px 0 0"></p></div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <a class="btn" id="ajak-wa" href="https://wa.me/?text=${encodeURIComponent(pesan)}" target="_blank" rel="noopener">Bagikan ke WhatsApp</a>
+          <button type="button" class="btn ghost" id="ajak-salin">Salin link</button>
+        </div></div>`;
+    $("ajak-salin").onclick = async () => {
+      try { await navigator.clipboard.writeText(pesan); toast("Link ajakan tersalin. Tempel di grup kelasmu!"); }
+      catch (e) { window.prompt("Salin pesan ini:", pesan); }
+    };
+    if (!DEMO && POLA_ID.test(state.pesertaId || "")) {
+      apiGet({ action: "referral", id: state.pesertaId }).then((r) => {
+        if (r && r.ok && r.jumlah > 0 && $("ajak-jumlah")) $("ajak-jumlah").textContent = `🎉 ${r.jumlah} teman sudah ikut lewat link kamu.`;
+      }).catch(() => {});
+    }
+  }
 
   /* ========== 5. INSTAGRAM STORY ========== */
   let storyFile = null, storyUrl = "";
@@ -679,7 +724,7 @@
   function tulisJSON(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); return true; } catch (e) { return false; } }
   function hapusProgres() { try { localStorage.removeItem(KUNCI_PROGRES); } catch (e) {} }
   function simpanProgres() {
-    const data = { ts: Date.now(), nama: state.nama, wa: state.wa, sekolah: state.sekolah, npsn: state.npsn, jalur: state.jalur,
+    const data = { ts: Date.now(), nama: state.nama, sekolah: state.sekolah, npsn: state.npsn, jalur: state.jalur, idem: state.idem,
       pesertaId: state.pesertaId, ans: state.ans, i: state.i, mulai: !!state.mulai, selesai: !!state.selesai,
       /* bukti hanya disimpan selama belum terkirim */
       bukti: state.pesertaId ? [] : state.bukti.map((b) => b && { mime: b.mime, data: b.data, preview: b.preview }) };
@@ -710,6 +755,7 @@
             tambah(g.length > 0, "Link grup WhatsApp", g.length ? "Terisi: " + g.join(", ") : "Belum diisi. Tombol gabung grup tidak muncul.");
             tambah((pg.wa_sales || []).length > 0, "Nomor WA tim sales", (pg.wa_sales || []).length ? pg.wa_sales.length + " nomor (dibagi bergiliran)" : "Belum diisi. Tombol konsultasi tidak muncul.");
             tambah(!!pg.link_tryout, "Link tryout", pg.link_tryout || "Belum diisi. Tombol tryout tidak muncul.");
+            tambah(true, "Teks ajakan referral", pg.teks_referral ? pg.teks_referral : "Pakai teks bawaan (kolom teks_referral kosong)");
             if ((pg.masalah || []).length) tambah(false, "Isian Pengaturan yang salah format", pg.masalah.join("; "));
           }
         } else {
@@ -755,8 +801,8 @@
   const masihBaru = p && Date.now() - (p.ts || 0) < 24 * 3600 * 1000;
   if (masihBaru && p.mulai && !p.selesai && Array.isArray(p.ans) && p.ans.length === state.ans.length &&
       confirm("Kamu punya tes yang belum selesai (" + p.ans.filter(Boolean).length + " dari " + p.ans.length + " terjawab). Lanjutkan?")) {
-    Object.assign(state, { nama: p.nama, wa: p.wa, sekolah: p.sekolah, npsn: p.npsn, jalur: p.jalur, setuju: true,
-      pesertaId: p.pesertaId || "", bukti: p.bukti || [], ans: p.ans, i: Math.min(p.i || 0, p.ans.length - 1), mulai: true });
+    Object.assign(state, { nama: p.nama, sekolah: p.sekolah, npsn: p.npsn, jalur: p.jalur, setuju: true,
+      idem: p.idem || state.idem, pesertaId: p.pesertaId || "", bukti: p.bukti || [], ans: p.ans, i: Math.min(p.i || 0, p.ans.length - 1), mulai: true });
     if (!state.pesertaId) kirimPendaftaran();
     show("tes"); renderQ();
     muatSyarat();
